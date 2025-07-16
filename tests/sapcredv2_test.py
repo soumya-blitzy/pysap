@@ -19,6 +19,7 @@
 import sys
 import unittest
 # External imports
+from scapy.compat import plain_str
 from scapy.asn1.asn1 import ASN1_PRINTABLE_STRING, ASN1_OID
 from scapy.layers.x509 import X509_RDN, X509_AttributeTypeAndValue
 # Custom imports
@@ -54,14 +55,14 @@ class PySAPCredV2Test(unittest.TestCase):
         self.assertEqual(cred.cipher_format_version, cipher_format_version)
         self.assertEqual(cred.cipher_algorithm, cipher_algorithm)
 
-        self.assertEqual(cred.cert_name, cert_name or self.cert_name)
-        self.assertEqual(cred.unknown1, "")
-        self.assertEqual(cred.pse_path, pse_path or self.pse_path)
-        self.assertEqual(cred.unknown2, "")
+        self.assertEqual(plain_str(cred.cert_name.val), cert_name or self.cert_name)
+        self.assertEqual(plain_str(cred.unknown1.val), "")
+        self.assertEqual(plain_str(cred.pse_path.val), pse_path or self.pse_path)
+        self.assertEqual(plain_str(cred.unknown2.val), "")
 
     def validate_credv2_plain(self, cred, decrypt_username=None, decrypt_pin=None):
         plain = cred.decrypt(decrypt_username or self.decrypt_username)
-        self.assertEqual(plain.pin.val, decrypt_pin or self.decrypt_pin)
+        self.assertEqual(plain_str(plain.pin.val), decrypt_pin or self.decrypt_pin)
 
     def test_credv2_lps_off_v0_3des(self):
         """Test parsing of a version 0 3DES encrypted credential with LPS off"""
