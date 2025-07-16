@@ -22,7 +22,7 @@ from zlib import crc32
 from struct import pack
 from datetime import datetime
 from os import stat as os_stat
-from cStringIO import StringIO
+from io import StringIO
 # External imports
 from scapy.packet import Packet
 from scapy.fields import (ByteField, ByteEnumField, LEIntField, FieldLenField,
