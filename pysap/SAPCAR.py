@@ -100,8 +100,8 @@ class SAPCARCompressedBlobFormat(PacketNoPadded):
         ByteEnumField("algorithm", 0x12, {0x12: "LZH", 0x10: "LZC"}),
         StrFixedLenField("magic_bytes", "\x1f\x9d", 2),
         ByteField("special", 2),
-        ConditionalField(StrField("blob", None, remain=4), lambda x: x.compressed_length <= 8),
-        ConditionalField(StrFixedLenField("blob", None, length_from=lambda x: x.compressed_length - 8),
+        ConditionalField(StrField("blob_small", None, remain=4), lambda x: x.compressed_length <= 8),
+        ConditionalField(StrFixedLenField("blob_large", None, length_from=lambda x: x.compressed_length - 8),
                          lambda x: x.compressed_length > 8),
     ]
 
