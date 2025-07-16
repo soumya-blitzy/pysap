@@ -40,7 +40,7 @@ class PySAPCARTest(unittest.TestCase):
 
     def setUp(self):
         with open(self.test_filename, "wb") as fd:
-            fd.write(self.test_string)
+            fd.write(self.test_string.encode('utf-8'))
 
     def tearDown(self):
         for filename in [self.test_filename, self.test_archive_file]:
@@ -60,10 +60,10 @@ class PySAPCARTest(unittest.TestCase):
             self.assertEqual(1, len(sapcar_archive.files))
             self.assertEqual(1, len(sapcar_archive.files_names))
             self.assertListEqual([self.test_filename], sapcar_archive.files_names)
-            self.assertListEqual([self.test_filename], sapcar_archive.files.keys())
+            self.assertListEqual([self.test_filename], list(sapcar_archive.files.keys()))
 
             af = sapcar_archive.open(self.test_filename)
-            self.assertEqual(self.test_string, af.read())
+            self.assertEqual(self.test_string.encode('utf-8'), af.read())
             af.close()
 
             ff = sapcar_archive.files[self.test_filename]
@@ -78,7 +78,7 @@ class PySAPCARTest(unittest.TestCase):
             self.assertFalse(ff.is_directory())
 
             self.assertTrue(ff.check_checksum())
-            self.assertEqual(ff.calculate_checksum(self.test_string), ff.checksum)
+            self.assertEqual(ff.calculate_checksum(self.test_string.encode('utf-8')), ff.checksum)
 
             af = ff.open()
             self.assertEqual(self.test_string, af.read())
@@ -111,11 +111,11 @@ class PySAPCARTest(unittest.TestCase):
         self.assertEqual(2, len(ar.files))
         self.assertEqual(2, len(ar.files_names))
         self.assertListEqual([self.test_filename, self.test_filename+"two"], ar.files_names)
-        self.assertListEqual([self.test_filename, self.test_filename+"two"], ar.files.keys())
+        self.assertListEqual([self.test_filename, self.test_filename+"two"], list(ar.files.keys()))
 
         for filename in [self.test_filename, self.test_filename+"two"]:
             af = ar.open(filename)
-            self.assertEqual(self.test_string, af.read())
+            self.assertEqual(self.test_string.encode('utf-8'), af.read())
             af.close()
 
             ff = ar.files[filename]
@@ -123,10 +123,10 @@ class PySAPCARTest(unittest.TestCase):
             self.assertEqual(filename, ff.filename)
 
             self.assertTrue(ff.check_checksum())
-            self.assertEqual(ff.calculate_checksum(self.test_string), ff.checksum)
+            self.assertEqual(ff.calculate_checksum(self.test_string.encode('utf-8')), ff.checksum)
 
             af = ff.open()
-            self.assertEqual(self.test_string, af.read())
+            self.assertEqual(self.test_string.encode('utf-8'), af.read())
             af.close()
 
         ar.write()
@@ -151,7 +151,7 @@ class PySAPCARTest(unittest.TestCase):
         self.assertTrue(ff.check_checksum())
 
         af = ff.open()
-        self.assertEqual(self.test_string, af.read())
+        self.assertEqual(self.test_string.encode('utf-8'), af.read())
         af.close()
 
     def test_sapcar_archive_file_200_to_201(self):
@@ -173,7 +173,7 @@ class PySAPCARTest(unittest.TestCase):
             self.assertIs(ff200.is_directory(), ff201.is_directory())
 
             af = ff201.open()
-            self.assertEqual(self.test_string, af.read())
+            self.assertEqual(self.test_string.encode('utf-8'), af.read())
             af.close()
 
     def test_sapcar_archive_200_to_201(self):
@@ -197,7 +197,7 @@ class PySAPCARTest(unittest.TestCase):
             self.assertIs(ff200.is_directory(), ff201.is_directory())
 
             af = ff201.open()
-            self.assertEqual(self.test_string, af.read())
+            self.assertEqual(self.test_string.encode('utf-8'), af.read())
             af.close()
 
     def test_sapcar_archive_201_to_200(self):
@@ -221,7 +221,7 @@ class PySAPCARTest(unittest.TestCase):
             self.assertIs(ff200.is_directory(), ff201.is_directory())
 
             af = ff200.open()
-            self.assertEqual(self.test_string, af.read())
+            self.assertEqual(self.test_string.encode('utf-8'), af.read())
             af.close()
 
     def test_sapcar_archive_file_length(self):
