@@ -269,7 +269,6 @@ class SAPRouterError(PacketNoPadded):
         StrNullField("XXX6", ""),
         StrNullField("XXX7", ""),
         StrNullField("XXX8", ""),
-        StrNullField("eyecatcher", "*ERR*"),
     ]
 
     time_format = "%a %b %d %H:%M:%S %Y"
@@ -452,10 +451,10 @@ class SAPRouter(Packet):
         # Cancel Route fields
         ConditionalField(FieldLenField("adm_client_count", None, count_of="adm_client_ids", fmt="H"), lambda pkt:router_is_admin(pkt) and pkt.adm_command in [6]),
         # Trace Connection fields
-        ConditionalField(FieldLenField("adm_client_count", None, count_of="adm_client_ids", fmt="I"), lambda pkt:router_is_admin(pkt) and pkt.adm_command in [12, 13]),
+        ConditionalField(FieldLenField("adm_client_count_trace", None, count_of="adm_client_ids", fmt="I"), lambda pkt:router_is_admin(pkt) and pkt.adm_command in [12, 13]),
 
         # Cancel Route or Trace Connection fields
-        ConditionalField(FieldListField("adm_client_ids", [0x00], IntField("", 0), count_from=lambda pkt:pkt.adm_client_count), lambda pkt:router_is_admin(pkt) and pkt.adm_command in [6, 12, 13]),
+        ConditionalField(FieldListField("adm_client_ids", [0x00], IntField("", 0), count_from=lambda pkt:pkt.adm_client_count if pkt.adm_command in [6] else pkt.adm_client_count_trace), lambda pkt:router_is_admin(pkt) and pkt.adm_command in [6, 12, 13]),
 
         # Set/Clear Peer Trace fields  # TODO: Check whether this field should be a IPv6 address or another proper field
         ConditionalField(StrFixedLenField("adm_address_mask", "", 32), lambda pkt:router_is_admin(pkt) and pkt.adm_command in [10, 11]),
