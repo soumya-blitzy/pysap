@@ -26,8 +26,19 @@ def data_filename(filename):
 
 
 def read_data_file(filename, unhex=True):
+    """
+    Read test data file and optionally convert from hex to binary.
+    
+    Args:
+        filename: Name of the test data file
+        unhex: If True, convert hex string to binary bytes (default: True)
+    
+    Returns:
+        bytes: Binary data when unhex=True
+        str: Hex string when unhex=False
+    """
     filename = data_filename(filename)
-    with open(filename, 'r') as f:
+    with open(filename, 'r', encoding='utf-8') as f:
         data = f.read()
 
     data = data.replace('\n', ' ').replace(' ', '')

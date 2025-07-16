@@ -20,7 +20,7 @@
 import sys
 import unittest
 from threading import Thread
-from SocketServer import BaseRequestHandler, ThreadingTCPServer
+from socketserver import BaseRequestHandler, ThreadingTCPServer
 # Custom imports
 from pysap.SAPHDB import SAPHDBConnection
 
@@ -30,7 +30,7 @@ class SAPHDBServerTestHandler(BaseRequestHandler):
 
     def handle_data(self):
         self.request.recv(14)
-        self.request.send("\x00" * 8)
+        self.request.send(b"\x00" * 8)
 
 
 class PySAPHDBConnectionTest(unittest.TestCase):

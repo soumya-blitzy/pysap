@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # encoding: utf-8
 # pysap - Python library for crafting SAP's network protocols packets
 #
@@ -89,7 +89,9 @@ sapcompress = Extension('pysapcompress',
                          'pysapcompress/vpa106cslzc.cpp',
                          'pysapcompress/vpa107cslzh.cpp',
                          'pysapcompress/vpa108csulzh.cpp'],
-                        define_macros=sapcompress_macros)
+                        define_macros=sapcompress_macros,
+                        # Python 3 C API compatibility ensured through setuptools
+                        language='c++')
 
 
 with open("README.md", "r") as fh:
@@ -111,7 +113,14 @@ setup(name=pysap.__title__,  # Package information
                    'Intended Audience :: Information Technology',
                    'Intended Audience :: System Administrators',
                    'License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)',
-                   'Programming Language :: Python',
+                   'Programming Language :: Python :: 3',
+                   'Programming Language :: Python :: 3.8',
+                   'Programming Language :: Python :: 3.9',
+                   'Programming Language :: Python :: 3.10',
+                   'Programming Language :: Python :: 3.11',
+                   'Programming Language :: Python :: 3.12',
+                   'Programming Language :: Python :: 3.13',
+                   'Programming Language :: Python :: 3 :: Only',
                    'Programming Language :: C++',
                    'Topic :: Security'],
       # Packages list
@@ -137,4 +146,7 @@ setup(name=pysap.__title__,  # Package information
       # Optional requirements for docs and some examples
       extras_require={"docs": open('requirements-docs.txt').read().splitlines(),
                       "examples": open('requirements-examples.txt').read().splitlines()},
+      
+      # Python version requirement for Python 3 compatibility
+      python_requires='>=3.8',
       )

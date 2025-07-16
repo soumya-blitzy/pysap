@@ -552,7 +552,7 @@ class SAPDiag(PacketNoPadded):
         decompress the payload.
         """
         # If the compression flag is set, decompress everything after the headers
-        if s[7] == "\x01":
+        if len(s) > 7 and s[7:8] == b"\x01":
             # First need to get the reported decompressed length
             (reported_length, ) = unpack("<I", s[8:12])
 
@@ -569,9 +569,9 @@ class SAPDiag(PacketNoPadded):
         the message field and the payload.
         """
         if pay is None:
-            pay = ''
+            pay = b''
         if self.compress == 1:
-            payload = "".join([str(item) for item in self.message]) + pay
+            payload = b"".join([bytes(item) for item in self.message]) + pay
             if len(payload) > 0:
                 try:
                     return p[:8] + self.do_compress(payload)

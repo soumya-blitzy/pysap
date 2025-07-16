@@ -153,11 +153,11 @@ class SAPCredv2_Cred(ASN1_Packet):
 
     @property
     def common_name(self):
-        return self.cert_name.val
+        return plain_str(self.cert_name.val)
 
     @property
     def pse_file_path(self):
-        return self.pse_path.val
+        return plain_str(self.pse_path.val)
 
     @property
     def lps_type(self):
@@ -170,14 +170,14 @@ class SAPCredv2_Cred(ASN1_Packet):
     @property
     def cipher_format_version(self):
         cipher = self.cipher.val_readable
-        if len(cipher) >= 36 and ord(cipher[0]) in [0, 1]:
-            return ord(cipher[0])
+        if len(cipher) >= 36 and cipher[0] in [0, 1]:
+            return cipher[0]
         return 0
 
     @property
     def cipher_algorithm(self):
         if self.cipher_format_version == 1:
-            return ord(self.cipher.val_readable[1])
+            return self.cipher.val_readable[1]
         return 0
 
     def decrypt(self, username):
@@ -211,9 +211,9 @@ class SAPCredv2_Cred(ASN1_Packet):
         blob = self.cipher.val_readable
 
         # Construct the key using the key format and the username
-        key = (cred_key_fmt % username)[:24]
+        key = (cred_key_fmt % username)[:24].encode('utf-8')
         # Set empty IV
-        iv = "\x00" * 8
+        iv = b"\x00" * 8
 
         # Decrypt the cipher text with the derived key and IV
         decryptor = Cipher(algorithms.TripleDES(key), modes.CBC(iv), backend=default_backend()).decryptor()
@@ -221,29 +221,38 @@ class SAPCredv2_Cred(ASN1_Packet):
 
         return SAPCredv2_Cred_Plain(plain)
 
-    def xor(self, string, start):
-        """XOR a given string using a fixed key and a starting number."""
+    def xor(self, data, start):
+        """XOR a given string/bytes using a fixed key and a starting number."""
         key = 0x15a4e35
         x = start
-        y = ""
-        for c in string:
+        result = []
+        
+        # Handle both string and bytes input
+        if isinstance(data, str):
+            data = data.encode('utf-8')
+        
+        for byte_val in data:
             x *= key
             x += 1
-            y += chr(ord(c) ^ (x & 0xff))
-        return y
+            result.append(byte_val ^ (x & 0xff))
+        
+        return bytes(result)
 
     def derive_key(self, key, blob, header, username):
         """Derive a key using SAP's algorithm. The key is derived using SHA256 and xor from an
         initial key, a header, salt and username.
         """
         digest = Hash(SHA256(), backend=default_backend())
+        # Ensure key is bytes for digest operations
+        if isinstance(key, str):
+            key = key.encode('utf-8')
         digest.update(key)
         digest.update(blob[0:4])
         digest.update(header.salt)
-        digest.update(self.xor(username, ord(header.salt[0])))
-        digest.update("" * 0x20)
+        digest.update(self.xor(username, header.salt[0]))
+        digest.update(b"" * 0x20)
         hashed = digest.finalize()
-        derived_key = self.xor(hashed, ord(header.salt[1]))
+        derived_key = self.xor(hashed, header.salt[1])
 
         # Validate and select proper algorithm
         if header.algorithm == CIPHER_ALGORITHM_3DES:
@@ -336,11 +345,11 @@ class SAPCredv2_Cred_LPS(ASN1_Packet):
 
     @property
     def pse_file_path(self):
-        return self.pse_path.val
+        return plain_str(self.pse_path.val)
 
     @property
     def lps_type(self):
-        return ord(self.cipher.val_readable[1])
+        return self.cipher.val_readable[1]
 
     @property
     def lps_type_str(self):
@@ -352,7 +361,7 @@ class SAPCredv2_Cred_LPS(ASN1_Packet):
 
     @property
     def cipher_format_version(self):
-        return ord(self.cipher.val_readable[0])
+        return self.cipher.val_readable[0]
 
     @property
     def cipher_algorithm(self):
@@ -377,7 +386,7 @@ class SAPCredv2_Cred_LPS(ASN1_Packet):
         plain = cipher.decrypt()
 
         # Get the pin from the raw data
-        plain_size = ord(plain[0])
+        plain_size = plain[0]
         pin = plain[plain_size + 1:]
 
         # Create a plain credential container

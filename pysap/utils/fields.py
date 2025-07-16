@@ -117,29 +117,46 @@ class StrNullFixedLenField(StrFixedLenField):
 
     def i2repr(self, pkt, v):
         if self.null_terminated(pkt):
-            if type(v) is str:
+            if isinstance(v, str):
                 v = v.rstrip("\0")
+            elif isinstance(v, bytes):
+                v = v.rstrip(b"\0").decode('utf-8', errors='replace')
             return repr(v)
         return StrFixedLenField.i2repr(self, pkt, v)
 
     def getfield(self, pkt, s):
         if self.null_terminated(pkt):
-            l = self.length_from(pkt) - 1
+            length = self.length_from(pkt)
+            if length is None:
+                length = len(s)
+            l = length - 1
             return s[l + 1:], self.m2i(pkt, s[:l])
         return StrFixedLenField.getfield(self, pkt, s)
 
     def addfield(self, pkt, s, val):
         if self.null_terminated(pkt):
-            l = self.length_from(pkt) - 1
-            return s + struct.pack("%is" % l, self.i2m(pkt, val)) + "\x00"
+            length = self.length_from(pkt)
+            if length is None:
+                # Default to a reasonable length based on the value
+                l = len(self.i2m(pkt, val)) if val else 0
+            else:
+                l = length - 1
+            val_bytes = self.i2m(pkt, val)
+            if isinstance(val_bytes, str):
+                val_bytes = val_bytes.encode('utf-8')
+            return s + struct.pack("%is" % l, val_bytes) + b"\x00"
         return StrFixedLenField.addfield(self, pkt, s, val)
 
     def randval(self):
         if self.null_terminated:
             try:
-                l = self.length_from(None) - 1
+                length = self.length_from(None)
+                if length is None:
+                    l = RandTermString(RandNum(0, self.max_length), b"\x00")
+                else:
+                    l = length - 1
             except:
-                l = RandTermString(RandNum(0, self.max_length), "\x00")
+                l = RandTermString(RandNum(0, self.max_length), b"\x00")
             return RandBin(l)
         return StrFixedLenField.randval(self)
 

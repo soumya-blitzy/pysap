@@ -122,7 +122,7 @@ class PySAPRoutedStreamSocketTest(unittest.TestCase):
 
     test_port = 8005
     test_address = "127.0.0.1"
-    test_string = "TEST" * 10
+    test_string = b"TEST" * 10
 
     def start_server(self, handler_cls):
         self.server = SAPNIServerThreaded((self.test_address, self.test_port),
