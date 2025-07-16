@@ -123,7 +123,7 @@ class SAPNIStreamSocket(StreamSocket):
         log_sapni.debug("Received 4 bytes NI header, to receive %d bytes data", nilength)
 
         # Receive the whole NI packet (length+payload)
-        nidata = ''
+        nidata = b''
         while len(nidata) < nilength + 4:
             nidata += self.ins.recv(nilength - len(nidata) + 4)
             if len(nidata) == 0:
@@ -131,7 +131,7 @@ class SAPNIStreamSocket(StreamSocket):
 
         # If the packet received is a keep-alive request (NI_PING), send a
         # response (NI_PONG) and make a new receive call
-        if nilength == len(SAPNI.SAPNI_PING) and nidata[4:] == SAPNI.SAPNI_PING:
+        if nilength == len(SAPNI.SAPNI_PING) and nidata[4:] == SAPNI.SAPNI_PING.encode('utf-8'):
             log_sapni.debug("Received NI_PING")
             if self.keep_alive:
                 log_sapni.debug("Keep alive set, sending NI_PONG")
@@ -473,7 +473,7 @@ class SAPNIServerHandler(BaseRequestHandler):
 
             except socket.error as e:
                 log_sapni.debug("SAPNIServerHandler: Error handling data or client %s disconnected, %s (errno %d)",
-                                self.client_address, e.message, e.errno)
+                                self.client_address, str(e), e.errno)
                 break
 
     def handle_data(self):
