@@ -805,7 +805,7 @@ class SAPHDBInitializationRequest(Packet):
     """
     name = "SAP HANA SQL Command Network Protocol Initialization Request"
     fields_desc = [
-        StrFixedLenField("initialization", "\xff\xff\xff\xff\x04\x20\x00\x04\x01\x00\x00\x01\x01\x01", 14),
+        StrFixedLenField("initialization", b"\xff\xff\xff\xff\x04\x20\x00\x04\x01\x00\x00\x01\x01\x01", 14),
     ]
 
 
@@ -1112,7 +1112,7 @@ class SAPHDBAuthGSSMethod(SAPHDBAuthMethod):
         # gss_token_response = SAPHDBPartAuthentication(auth_response_part.auth_fields[1].value)
 
         last_gss_token = SAPHDBPartAuthentication(auth_fields=[SAPHDBPartAuthenticationField(value=self.krb5oid),
-                                                               SAPHDBPartAuthenticationField(value="\x05")])
+                                                               SAPHDBPartAuthenticationField(value=b"\x05")])
         return super(SAPHDBAuthGSSMethod, self).craft_authentication_response_part(auth_response_part, last_gss_token)
 
     def authenticate(self, connection):
@@ -1134,7 +1134,7 @@ class SAPHDBAuthGSSMethod(SAPHDBAuthMethod):
         #  * typeoid: type of the client GSS name
         #  * gssname: the client GSS name (e.g. UPN)
         first_gss_token = SAPHDBPartAuthentication(auth_fields=[SAPHDBPartAuthenticationField(value=self.krb5oid),
-                                                                SAPHDBPartAuthenticationField(value="\x01"),
+                                                                SAPHDBPartAuthenticationField(value=b"\x01"),
                                                                 SAPHDBPartAuthenticationField(value=self.typeoid),
                                                                 SAPHDBPartAuthenticationField(value=self.username)])
         first_auth_request = self.craft_authentication_request(first_gss_token, connection=connection)
@@ -1174,7 +1174,7 @@ class SAPHDBAuthGSSMethod(SAPHDBAuthMethod):
         #  * commtype: communication type ("\x03")
         #  * krb5ticket: the GSSAPI KRB5 AP-REQ structure to use
         second_gss_value = SAPHDBPartAuthentication(auth_fields=[SAPHDBPartAuthenticationField(value=self.krb5oid),
-                                                                 SAPHDBPartAuthenticationField(value="\x03"),
+                                                                 SAPHDBPartAuthenticationField(value=b"\x03"),
                                                                  SAPHDBPartAuthenticationField(value=krb5ticket)])
         second_auth_request = self.craft_authentication_request(second_gss_value, connection=connection)
         second_auth_response = connection.sr(second_auth_request)
@@ -1203,7 +1203,7 @@ class SAPHDBAuthGSSMethod(SAPHDBAuthMethod):
             #  * commtype: communication type ("\x07")
             #  * session cookie: the SessionCookie established for the connection
             gss_token = SAPHDBPartAuthentication(self.session_cookie)
-            if gss_token.auth_fields[1].value == "\x07":
+            if gss_token.auth_fields[1].value == b"\x07":
                 self.session_cookie = gss_token.auth_fields[2].value
             else:
                 self.session_cookie = None
@@ -1493,3 +1493,6 @@ class SAPHDBTLSConnection(SAPHDBConnection):
 # Bind SAP NI with the HDB ports
 bind_layers(TCP, SAPHDB, dport=30013)
 bind_layers(TCP, SAPHDB, dport=30015)
+
+# Export the main connection class for use by test files during Python 3 migration
+__all__ = ['SAPHDBConnection']
