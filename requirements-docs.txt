@@ -3,5 +3,5 @@ ipykernel>=6.0.0
 nbsphinx>=0.9.0
 pyx>=0.16.0
 ipython>=8.0.0
-m2r2>=0.3.3
+sphinx-mdinclude>=0.6.0
 mistune>=3.0.0
