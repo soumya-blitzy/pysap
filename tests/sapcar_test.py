@@ -81,7 +81,7 @@ class PySAPCARTest(unittest.TestCase):
             self.assertEqual(ff.calculate_checksum(self.test_string.encode('utf-8')), ff.checksum)
 
             af = ff.open()
-            self.assertEqual(self.test_string, af.read())
+            self.assertEqual(self.test_string.encode('utf-8'), af.read())
             af.close()
 
     def test_sapcar_archive(self):
@@ -141,7 +141,7 @@ class PySAPCARTest(unittest.TestCase):
         self.assertTrue(ff.check_checksum())
 
         af = ff.open()
-        self.assertEqual(self.test_string, af.read())
+        self.assertEqual(self.test_string.encode('utf-8'), af.read())
         af.close()
 
         test_filename_new = "some_other_filename.txt"
