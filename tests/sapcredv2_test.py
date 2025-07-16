@@ -1,4 +1,3 @@
-# encoding: utf-8
 # pysap - Python library for crafting SAP's network protocols packets
 #
 # This program is free software; you can redistribute it and/or
