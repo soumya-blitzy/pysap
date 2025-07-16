@@ -138,7 +138,7 @@ class PySAPDiagTest(unittest.TestCase):
         self.assertNotIn(sapdiag_appl_item, sapdiag.get_item(["APPL"], ["ST_USER"], ["CONNECT"]))
 
         # Insert a wrong item and observe that the lookup still works
-        sapdiag.message.append(Raw("\x00" * 10))
+        sapdiag.message.append(Raw(b"\x00" * 10))
         self.assertIn(sapdiag_ses_item, sapdiag.get_item("SES"))
         self.assertIn(sapdiag_appl_item, sapdiag.get_item(["APPL"], "ST_USER", ["RFC_PARENT_UUID", "CONNECT"]))
 
@@ -150,7 +150,7 @@ class PySAPDiagTest(unittest.TestCase):
 
         item_string = "strfield"
         item_value = SAPDiagItemTest(strfield=item_string)
-        item = SAPDiagItem("\x10\x99\xff" + pack("!H", len(item_string)) + item_string)
+        item = SAPDiagItem(b"\x10\x99\xff" + pack("!H", len(item_string)) + item_string.encode('utf-8'))
 
         self.assertEqual(item.item_value, item_value)
         self.assertEqual(item.item_length, len(item_string))
