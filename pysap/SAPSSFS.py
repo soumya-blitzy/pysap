@@ -34,7 +34,7 @@ from pysap.utils.fields import PacketNoPadded, StrFixedLenPaddedField, Timestamp
 log_ssfs = logging.getLogger("pysap.ssfs")
 
 
-ssfs_hmac_key_unobscured = "\xe3\xa0\x61\x11\x85\x41\x68\x99\xf3\x0e\xda\x87\x7a\x80\xcc\x69"
+ssfs_hmac_key_unobscured = b"\xe3\xa0\x61\x11\x85\x41\x68\x99\xf3\x0e\xda\x87\x7a\x80\xcc\x69"
 """Fixed key embedded in rsecssfx binaries for validating integrity of records"""
 
 
@@ -143,7 +143,7 @@ class SAPSSFSDataRecord(PacketNoPadded):
     fields_desc = [
         # Record Header
         StrFixedLenField("preamble", "RSecSSFsData", 12),
-        LenField("length", 0, fmt="I"),  # Max record length supported is 0x18150
+        LenField("length", 0, fmt=">I"),  # Max record length supported is 0x18150, big-endian
         ByteField("type", 1),   # Record type "1" supported
         StrFixedLenField("filler1", None, 7),
         # Data Header
@@ -180,8 +180,13 @@ class SAPSSFSDataRecord(PacketNoPadded):
 
         # Calculate the HMAC-SHA1
         h = HMAC(ssfs_hmac_key_unobscured, SHA1(), backend=default_backend())
-        h.update(str(self)[24:156])  # Entire Data header without the HMAC field
-        h.update(self.data)
+        # Convert to bytes if needed for Python 3 compatibility
+        packet_bytes = bytes(self)
+        h.update(packet_bytes[24:156])  # Entire Data header without the HMAC field
+        data_bytes = self.data
+        if isinstance(data_bytes, str):
+            data_bytes = data_bytes.encode('latin1')
+        h.update(data_bytes)
 
         # Validate the signature
         try:
@@ -216,7 +221,13 @@ class SAPSSFSData(Packet):
         :rtype: bool
         """
         for record in self.records:
-            if record.key_name.rstrip(" ") == key_name:
+            # Handle Python 3 bytes/str compatibility
+            record_key = record.key_name
+            if isinstance(record_key, bytes):
+                record_key = record_key.decode('utf-8', errors='ignore')
+            if isinstance(key_name, bytes):
+                key_name = key_name.decode('utf-8', errors='ignore')
+            if record_key.rstrip(" ") == key_name:
                 return True
         return False
 
@@ -230,7 +241,13 @@ class SAPSSFSData(Packet):
         :rtype: SAPSSFSDataRecord
         """
         for record in self.records:
-            if record.key_name.rstrip(" ") == key_name:
+            # Handle Python 3 bytes/str compatibility
+            record_key = record.key_name
+            if isinstance(record_key, bytes):
+                record_key = record_key.decode('utf-8', errors='ignore')
+            if isinstance(key_name, bytes):
+                key_name = key_name.decode('utf-8', errors='ignore')
+            if record_key.rstrip(" ") == key_name:
                 yield record
 
     def get_record(self, key_name):
