@@ -55,7 +55,7 @@ class PySAPDiagTest(unittest.TestCase):
 
         diag_header_plain = SAPDiag(compress=0)
         diag_header_plain.message.append(diag_item)
-        new_diag_header_plain = SAPDiag(str(diag_header_plain))
+        new_diag_header_plain = SAPDiag(bytes(diag_header_plain))
 
         self.assertEqual(str(diag_header_plain),
                          str(new_diag_header_plain))
@@ -66,7 +66,7 @@ class PySAPDiagTest(unittest.TestCase):
 
         diag_header_compr = SAPDiag(compress=1)
         diag_header_compr.message.append(diag_item)
-        new_diag_header_compr = SAPDiag(str(diag_header_compr))
+        new_diag_header_compr = SAPDiag(bytes(diag_header_compr))
         self.assertEqual(str(diag_header_compr.message[0]),
                          str(new_diag_header_compr.message[0]))
 
@@ -154,7 +154,7 @@ class PySAPDiagTest(unittest.TestCase):
 
         self.assertEqual(item.item_value, item_value)
         self.assertEqual(item.item_length, len(item_string))
-        self.assertEqual(item.item_value.strfield, item_string)
+        self.assertEqual(item.item_value.strfield, item_string.encode('utf-8'))
         self.assertEqual(str(item.item_value), str(item_value))
         self.assertIs(diag_item_get_class(item, "APPL", 0x99, 0xff), SAPDiagItemTest)
 
