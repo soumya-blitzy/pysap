@@ -59,19 +59,19 @@ class PySAPNITest(unittest.TestCase):
         """Test SAPNI length field building"""
         sapni = SAPNI() / self.test_string
 
-        (sapni_length, ) = unpack("!I", str(sapni)[:4])
+        (sapni_length, ) = unpack("!I", bytes(sapni)[:4])
         self.assertEqual(sapni_length, len(self.test_string))
-        self.assertEqual(sapni.payload.load, self.test_string)
+        self.assertEqual(sapni.payload.load, self.test_string.encode('utf-8'))
 
     def test_sapni_dissection(self):
         """Test SAPNI length field dissection"""
 
-        data = pack("!I", len(self.test_string)) + self.test_string
+        data = pack("!I", len(self.test_string)) + self.test_string.encode('utf-8')
         sapni = SAPNI(data)
         sapni.decode_payload_as(Raw)
 
         self.assertEqual(sapni.length, len(self.test_string))
-        self.assertEqual(sapni.payload.load, self.test_string)
+        self.assertEqual(sapni.payload.load, self.test_string.encode('utf-8'))
 
 
 class SAPNITestHandler(BaseRequestHandler):
@@ -91,7 +91,7 @@ class SAPNITestHandlerKeepAlive(SAPNITestHandler):
 
     def handle(self):
         SAPNITestHandler.handle(self)
-        self.request.sendall("\x00\x00\x00\x08NI_PING\x00")
+        self.request.sendall(b"\x00\x00\x00\x08NI_PING\x00")
 
 
 class SAPNITestHandlerClose(SAPNITestHandler):
@@ -177,14 +177,14 @@ class PySAPNIStreamSocketTest(PySAPBaseServerTest):
         # We should receive our packet first
         self.assertIn(SAPNI, packet)
         self.assertEqual(packet[SAPNI].length, len(self.test_string))
-        self.assertEqual(packet.payload.load, self.test_string)
+        self.assertEqual(packet.payload.load, self.test_string.encode('utf-8'))
 
         # Then we should get a we should receive a PING
         packet = self.client.recv()
 
         self.assertIn(SAPNI, packet)
         self.assertEqual(packet[SAPNI].length, len(SAPNI.SAPNI_PING))
-        self.assertEqual(packet.payload.load, SAPNI.SAPNI_PING)
+        self.assertEqual(packet.payload.load, SAPNI.SAPNI_PING.encode('utf-8'))
 
         self.client.close()
         self.stop_server()
@@ -205,7 +205,7 @@ class PySAPNIStreamSocketTest(PySAPBaseServerTest):
         # We should receive our packet first
         self.assertIn(SAPNI, packet)
         self.assertEqual(packet[SAPNI].length, len(self.test_string))
-        self.assertEqual(packet.payload.load, self.test_string)
+        self.assertEqual(packet.payload.load, self.test_string.encode('utf-8'))
 
         # Then we should get a connection reset if we try to receive from the server
         self.assertRaises(socket.error, self.client.recv)
@@ -293,7 +293,7 @@ class PySAPNIProxyTest(PySAPBaseServerTest):
 
         sock = socket.socket()
         sock.connect((self.test_address, self.test_proxyport))
-        sock.sendall(pack("!I", len(self.test_string)) + self.test_string)
+        sock.sendall(pack("!I", len(self.test_string)) + self.test_string.encode('utf-8'))
 
         response = sock.recv(4)
         self.assertEqual(len(response), 4)
@@ -302,7 +302,7 @@ class PySAPNIProxyTest(PySAPBaseServerTest):
 
         response = sock.recv(ni_length)
         self.assertEqual(unpack("!I", response[:4]), (len(self.test_string), ))
-        self.assertEqual(response[4:], self.test_string)
+        self.assertEqual(response[4:], self.test_string.encode('utf-8'))
 
         sock.close()
         self.stop_sapniproxy()
@@ -324,7 +324,7 @@ class PySAPNIProxyTest(PySAPBaseServerTest):
 
         sock = socket.socket()
         sock.connect((self.test_address, self.test_proxyport))
-        sock.sendall(pack("!I", len(self.test_string)) + self.test_string)
+        sock.sendall(pack("!I", len(self.test_string)) + self.test_string.encode('utf-8'))
 
         expected_reponse = self.test_string + "Client" + "Server"
 
@@ -335,7 +335,7 @@ class PySAPNIProxyTest(PySAPBaseServerTest):
 
         response = sock.recv(ni_length)
         self.assertEqual(unpack("!I", response[:4]), (len(self.test_string) + 6, ))
-        self.assertEqual(response[4:], expected_reponse)
+        self.assertEqual(response[4:], expected_reponse.encode('utf-8'))
 
         sock.close()
         self.stop_sapniproxy()
