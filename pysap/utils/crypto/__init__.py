@@ -20,7 +20,7 @@
 import os
 import math
 # Custom imports
-from rsec import RSECCipher
+from .rsec import RSECCipher
 # External imports
 from cryptography.exceptions import InvalidKey
 from cryptography.hazmat.primitives.hmac import HMAC
@@ -112,7 +112,7 @@ class PKCS12_PBKDF1(object):
         v = self._algorithm.block_size
 
         # Step 1 - Concatenate v/8 copies of ID
-        d = chr(self._id) * v
+        d = bytes([self._id]) * v
 
         def concatenate_string(inp):
             s = b''
@@ -145,13 +145,13 @@ class PKCS12_PBKDF1(object):
         def to_int(value):
             if value == b'':
                 return 0
-            return long(value.encode("hex"), 16)
+            return int(value.hex(), 16)
 
         def to_bytes(value):
             value = "%x" % value
             if len(value) & 1:
                 value = "0" + value
-            return value.decode("hex")
+            return bytes.fromhex(value)
 
         a = b'\x00' * (c * u)
         for n in range(1, c + 1):
@@ -211,7 +211,7 @@ class PBKDF1(object):
         h.update(key_material)
         h.update(self._salt)
         derived_key = h.finalize()
-        for i in xrange(self._iterations-1):
+        for i in range(self._iterations-1):
             h = Hash(self._algorithm(), backend=self._backend)
             h.update(derived_key)
             derived_key = h.finalize()
@@ -355,8 +355,8 @@ def rsec_decrypt(blob, key):
     if len(key) != 24:
         raise Exception("Wrong key length")
 
-    blob = [ord(i) for i in blob]
-    key = [ord(i) for i in key]
+    blob = [i if isinstance(i, int) else ord(i) for i in blob]
+    key = [i if isinstance(i, int) else ord(i) for i in key]
     key1 = key[0:8]
     key2 = key[8:16]
     key3 = key[16:24]
@@ -366,17 +366,17 @@ def rsec_decrypt(blob, key):
     round_2 = cipher.crypt(RSECCipher.MODE_ENCODE, round_1, key2, len(round_1))
     round_3 = cipher.crypt(RSECCipher.MODE_DECODE, round_2, key1, len(round_2))
 
-    return ''.join([chr(i) for i in round_3])
+    return bytes([i for i in round_3])
 
 def rsec_decrypt_key(key_enc):
-    kek = "\x9F\x60\xA6\xDD\x7E\x15\x7D\x07\x0C\xC3\x57\x90\x9A\xA2\x90\xE9\x36\x0E\xEE\x47\x2F\xDA\x47\x72"
-    kek = [ord(i) for i in kek]
+    kek = b"\x9F\x60\xA6\xDD\x7E\x15\x7D\x07\x0C\xC3\x57\x90\x9A\xA2\x90\xE9\x36\x0E\xEE\x47\x2F\xDA\x47\x72"
+    kek = [i if isinstance(i, int) else ord(i) for i in kek]
     kek1 = kek[0:8]
     kek2 = kek[8:16]
     kek3 = kek[16:24]
     """ Default Key Encryption Key embedded in rsecssfx/kernel binaries """
 
-    blob = [ord(i) for i in key_enc[:56]]
+    blob = [i if isinstance(i, int) else ord(i) for i in key_enc[:56]]
     last_key_byte = bytearray(key_enc[56:])
     """ Last key byte is computed outside DES decryption """
 
@@ -385,7 +385,7 @@ def rsec_decrypt_key(key_enc):
     round_2 = cipher.crypt(RSECCipher.MODE_ENCODE, round_1, kek2, len(round_1))
     round_3 = cipher.crypt(RSECCipher.MODE_DECODE, round_2, kek1, len(round_2))
 
-    t1 = [ord(i) for i in key_enc[48:56]]
+    t1 = [i if isinstance(i, int) else ord(i) for i in key_enc[48:56]]
     tmp = cipher.crypt(RSECCipher.MODE_ENCODE, t1, kek3, 8)
     last_key_byte = last_key_byte[0]  ^ tmp[0]
 
@@ -395,4 +395,4 @@ def rsec_decrypt_key(key_enc):
     tmp = cipher.crypt(RSECCipher.MODE_ENCODE, round_2[48:56], kek1, 8)
     last_key_byte = last_key_byte ^ tmp[0]
 
-    return [chr(c) for c in round_3[33:] + [last_key_byte]]
+    return bytes(round_3[33:] + [last_key_byte])
