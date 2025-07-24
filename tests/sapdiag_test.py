@@ -27,14 +27,14 @@ from scapy.packet import Packet, Raw
 from tests.utils import read_data_file
 from pysap.SAPDiag import (SAPDiagItems, SAPDiagItem, SAPDiag, bind_diagitem,
                            diag_item_get_class)
-from pysap.SAPDiagItems import SAPDiagDyntAtomItem
+from pysap.SAPDiagItems import SAPDiagDyntAtomItem, SAPDiagSES
 
 
 class PySAPDiagTest(unittest.TestCase):
 
     def test_sapdiag_header_build(self):
         """Test SAPDiag headers building"""
-        diag_item = SAPDiagItem(item_value="TEST")
+        diag_item = SAPDiagItem(item_value=b"TEST")
 
         diag_header_plain = SAPDiag(compress=0)
         diag_header_plain.message.append(diag_item)
@@ -51,7 +51,7 @@ class PySAPDiagTest(unittest.TestCase):
 
     def test_sapdiag_header_dissection_plain(self):
         """Test SAPDiag headers dissection without compression"""
-        diag_item = SAPDiagItem(item_value="TEST_PLAIN")
+        diag_item = SAPDiagItem(item_value=b"TEST_PLAIN")
 
         diag_header_plain = SAPDiag(compress=0)
         diag_header_plain.message.append(diag_item)
@@ -62,7 +62,7 @@ class PySAPDiagTest(unittest.TestCase):
 
     def test_sapdiag_header_dissection_compressed(self):
         """Test SAPDiag headers dissection with compression"""
-        diag_item = SAPDiagItem(item_value="TEST_COMPRESSED")
+        diag_item = SAPDiagItem(item_type=0x01, item_value=SAPDiagSES())
 
         diag_header_compr = SAPDiag(compress=1)
         diag_header_compr.message.append(diag_item)
@@ -159,7 +159,7 @@ class PySAPDiagTest(unittest.TestCase):
         self.assertIs(diag_item_get_class(item, "APPL", 0x99, 0xff), SAPDiagItemTest)
 
 
-def test_suite():
+def _test_suite():
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     suite.addTest(loader.loadTestsFromTestCase(PySAPDiagTest))
@@ -168,5 +168,5 @@ def test_suite():
 
 if __name__ == "__main__":
     test_runner = unittest.TextTestRunner(verbosity=2, resultclass=unittest.TextTestResult)
-    result = test_runner.run(test_suite())
+    result = test_runner.run(_test_suite())
     sys.exit(not result.wasSuccessful())

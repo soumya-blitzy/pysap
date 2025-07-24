@@ -23,6 +23,7 @@ import unittest
 from threading import Thread
 from struct import pack, unpack
 from socketserver import BaseRequestHandler, ThreadingTCPServer
+import random
 # External imports
 from scapy.fields import StrField
 from scapy.packet import Packet, Raw
@@ -36,6 +37,9 @@ class PySAPBaseServerTest(unittest.TestCase):
     def start_server(self, address, port, handler_cls, server_cls=None):
         if server_cls is None:
             server_cls = ThreadingTCPServer
+        # Use a random port if port is None
+        if port is None:
+            port = random.randint(20000, 40000)
         self.server = server_cls((address, port), handler_cls,
                                  bind_and_activate=False)
         self.server.allow_reuse_address = True
@@ -44,6 +48,7 @@ class PySAPBaseServerTest(unittest.TestCase):
         self.server_thread = Thread(target=self.server.serve_forever)
         self.server_thread.daemon = True
         self.server_thread.start()
+        self.test_port = port
 
     def stop_server(self):
         self.server.shutdown()
@@ -103,9 +108,10 @@ class SAPNITestHandlerClose(SAPNITestHandler):
 
 class PySAPNIStreamSocketTest(PySAPBaseServerTest):
 
-    test_port = 8005
-    test_address = "127.0.0.1"
-    test_string = "TEST" * 10
+    def setUp(self):
+        self.test_port = random.randint(20000, 40000)
+        self.test_address = "127.0.0.1"
+        self.test_string = "TEST" * 10
 
     def test_sapnistreamsocket(self):
         """Test SAPNIStreamSocket"""
@@ -121,7 +127,7 @@ class PySAPNIStreamSocketTest(PySAPBaseServerTest):
 
         self.assertIn(SAPNI, packet)
         self.assertEqual(packet[SAPNI].length, len(self.test_string))
-        self.assertEqual(packet.payload.load, self.test_string)
+        self.assertEqual(packet.payload.load, self.test_string.encode('utf-8'))
 
         self.stop_server()
 
@@ -142,7 +148,7 @@ class PySAPNIStreamSocketTest(PySAPBaseServerTest):
         self.assertIn(SAPNI, packet)
         self.assertIn(SomeClass, packet)
         self.assertEqual(packet[SAPNI].length, len(self.test_string))
-        self.assertEqual(packet[SomeClass].text, self.test_string)
+        self.assertEqual(packet[SomeClass].text.decode('utf-8'), self.test_string)
 
         self.stop_server()
 
@@ -159,7 +165,7 @@ class PySAPNIStreamSocketTest(PySAPBaseServerTest):
 
         self.assertIn(SAPNI, packet)
         self.assertEqual(packet[SAPNI].length, len(self.test_string))
-        self.assertEqual(packet.payload.load, self.test_string)
+        self.assertEqual(packet.payload.load.decode('utf-8'), self.test_string)
 
         self.stop_server()
 
@@ -248,7 +254,7 @@ class PySAPNIServerTest(PySAPBaseServerTest):
 
         sock = socket.socket()
         sock.connect((self.test_address, self.test_port))
-        sock.sendall(pack("!I", len(self.test_string)) + self.test_string)
+        sock.sendall(pack("!I", len(self.test_string)) + self.test_string.encode('utf-8'))
 
         response = sock.recv(4)
         self.assertEqual(len(response), 4)
@@ -257,7 +263,7 @@ class PySAPNIServerTest(PySAPBaseServerTest):
 
         response = sock.recv(ni_length)
         self.assertEqual(unpack("!I", response[:4]), (len(self.test_string), ))
-        self.assertEqual(response[4:], self.test_string)
+        self.assertEqual(response[4:].decode('utf-8'), self.test_string)
 
         sock.close()
         self.stop_server()
@@ -265,10 +271,11 @@ class PySAPNIServerTest(PySAPBaseServerTest):
 
 class PySAPNIProxyTest(PySAPBaseServerTest):
 
-    test_proxyport = 8005
-    test_serverport = 8006
-    test_address = "127.0.0.1"
-    test_string = "TEST" * 10
+    def setUp(self):
+        self.test_proxyport = random.randint(20000, 40000)
+        self.test_serverport = random.randint(20000, 40000)
+        self.test_address = "127.0.0.1"
+        self.test_string = "TEST" * 10
     proxyhandler_cls = SAPNIProxyHandler
     serverhandler_cls = SAPNIServerTestHandler
 
@@ -342,17 +349,16 @@ class PySAPNIProxyTest(PySAPBaseServerTest):
         self.stop_server()
 
 
-def test_suite():
+def _test_suite():
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     suite.addTest(loader.loadTestsFromTestCase(PySAPNITest))
     suite.addTest(loader.loadTestsFromTestCase(PySAPNIStreamSocketTest))
     suite.addTest(loader.loadTestsFromTestCase(PySAPNIServerTest))
     suite.addTest(loader.loadTestsFromTestCase(PySAPNIProxyTest))
-    return suite
 
 
 if __name__ == "__main__":
     test_runner = unittest.TextTestRunner(verbosity=2, resultclass=unittest.TextTestResult)
-    result = test_runner.run(test_suite())
+    result = test_runner.run(_test_suite())
     sys.exit(not result.wasSuccessful())

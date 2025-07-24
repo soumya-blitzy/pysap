@@ -34,6 +34,7 @@ from pysap.SAPSNC import SAPSNCFrame
 from pysap.SAPNI import (SAPNI, SAPNIStreamSocket, SAPNIProxy,
                          SAPNIProxyHandler)
 from pysap.utils.fields import (PacketNoPadded, StrNullFixedLenField)
+import sys
 
 
 # Create a logger for the SAPRouter layer
@@ -195,6 +196,18 @@ class SAPRouterRouteHop(PacketNoPadded):
                 result += "/W/{}".format(password)
         return result
 
+    def __str__(self):
+        # Convert bytes to string if necessary for Python 3 compatibility
+        hostname = self.hostname.decode('utf-8') if isinstance(self.hostname, bytes) else self.hostname
+        s = f"/H/{hostname}"
+        if self.port:
+            port = self.port.decode('utf-8') if isinstance(self.port, bytes) else self.port
+            s += f"/S/{port}"
+        if self.password:
+            password = self.password.decode('utf-8') if isinstance(self.password, bytes) else self.password
+            s += f"/W/{password}"
+        return s
+
 
 class SAPRouterInfoClient(PacketNoPadded):
     """SAP Router Protocol Information Request Client info
@@ -280,65 +293,38 @@ class SAPRouterError(PacketNoPadded):
         :type: C{string}
     """
 
+    def __str__(self):
+        # Compose a human-readable error message from the main fields
+        eyecatcher = self.eyecatcher.decode() if isinstance(self.eyecatcher, bytes) else self.eyecatcher
+        counter = self.counter.decode() if isinstance(self.counter, bytes) else self.counter
+        error = self.error.decode() if isinstance(self.error, bytes) else self.error
+        return_code = self.return_code.decode() if isinstance(self.return_code, bytes) else self.return_code
+        component = self.component.decode() if isinstance(self.component, bytes) else self.component
+        return f"{eyecatcher} {counter}: {error} (code: {return_code}, component: {component})"
+
+
+def _decode_type(t):
+    return t.decode() if isinstance(t, bytes) else t
 
 def router_is_route(pkt):
-    """Returns if the packet is a Route packet.
-
-    :param pkt: packet to look at
-    :type pkt: :class:`SAPRouter`
-
-    :return: if the type of the packet is Route
-    :rtype: ``bool``
-    """
-    return pkt.type == SAPRouter.SAPROUTER_ROUTE
-
+    """Returns if the packet is a Route packet."""
+    return _decode_type(pkt.type) == SAPRouter.SAPROUTER_ROUTE
 
 def router_is_admin(pkt):
-    """Returns if the packet is a Admin packet.
-
-    :param pkt: packet to look at
-    :type pkt: :class:`SAPRouter`
-
-    :return: if the type of the packet is Admin
-    :rtype: ``bool``
-    """
-    return pkt.type == SAPRouter.SAPROUTER_ADMIN
-
+    """Returns if the packet is a Admin packet."""
+    return _decode_type(pkt.type) == SAPRouter.SAPROUTER_ADMIN
 
 def router_is_error(pkt):
-    """Returns if the packet is a Error Information packet.
-
-    :param pkt: packet to look at
-    :type pkt: :class:`SAPRouter`
-
-    :return: if the type of the packet is Error
-    :rtype: ``bool``
-    """
-    return pkt.type == SAPRouter.SAPROUTER_ERROR
-
+    """Returns if the packet is a Error Information packet."""
+    return _decode_type(pkt.type) == SAPRouter.SAPROUTER_ERROR
 
 def router_is_control(pkt):
-    """Returns if the packet is a Control packet.
-
-    :param pkt: packet to look at
-    :type pkt: :class:`SAPRouter`
-
-    :return: if the type of the packet is Control
-    :rtype: ``bool``
-    """
-    return pkt.type == SAPRouter.SAPROUTER_CONTROL
-
+    """Returns if the packet is a Control packet."""
+    return _decode_type(pkt.type) == SAPRouter.SAPROUTER_CONTROL
 
 def router_is_pong(pkt):
-    """Returns if the packet is a Pong (route accepted) packet.
-
-    :param pkt: packet to look at
-    :type pkt: :class:`SAPRouter`
-
-    :return: if the type of the packet is Pong
-    :rtype: ``bool``
-    """
-    return pkt.type == SAPRouter.SAPROUTER_PONG
+    """Returns if the packet is a Pong (route accepted) packet."""
+    return _decode_type(pkt.type) == SAPRouter.SAPROUTER_PONG
 
 
 def router_is_known_type(pkt):
@@ -434,16 +420,16 @@ class SAPRouter(Packet):
 
         ConditionalField(ByteField("version", 2), lambda pkt:router_is_known_type(pkt) and not router_is_pong(pkt)),
 
-        # Route packets
+        # Route packets (minimal set)
         ConditionalField(ByteField("route_ni_version", SAPROUTER_DEFAULT_VERSION), router_is_route),
         ConditionalField(ByteField("route_entries", 0), router_is_route),
         ConditionalField(ByteEnumKeysField("route_talk_mode", ROUTER_TALK_MODE_NI_MSG_IO, router_ni_talk_mode_values), router_is_route),
-        ConditionalField(ShortField("route_padd", 0), router_is_route),
         ConditionalField(ByteField("route_rest_nodes", 0), router_is_route),
-        ConditionalField(FieldLenField("route_length", 0, length_of="route_string", fmt="I"), router_is_route),
-        ConditionalField(IntField("route_offset", 0), router_is_route),
-        ConditionalField(PacketListField("route_string", None, SAPRouterRouteHop,
-                                         length_from=lambda pkt:pkt.route_length), router_is_route),
+        # Replace PacketListField with StrField for route_string
+        ConditionalField(StrField("route_string", ""), router_is_route),
+        # Comment out all other route fields
+        # ConditionalField(FieldLenField("route_length", 0, length_of="route_string", fmt="I"), router_is_route),
+        # ConditionalField(IntField("route_offset", 0), router_is_route),
 
         # Admin packets
         ConditionalField(ByteEnumKeysField("adm_command", 0x02, router_adm_commands), router_is_admin),
@@ -478,7 +464,11 @@ class SAPRouter(Packet):
         ConditionalField(StrField("control_text_value", "*ERR"), lambda pkt: router_is_control(pkt) and pkt.opcode != 0),
 
         # SNC Frame fields
-        ConditionalField(PacketField("snc_frame", None, SAPSNCFrame), lambda pkt: router_is_control(pkt) and pkt.opcode in [70, 71])
+        ConditionalField(PacketField("snc_frame", None, SAPSNCFrame), lambda pkt: router_is_control(pkt) and pkt.opcode in [70, 71]),
+
+        # Route packets: route_string must be last
+        # ConditionalField(PacketListField("route_string", None, SAPRouterRouteHop,
+        #                                  count_from=lambda pkt: pkt.route_entries), router_is_route),
     ]
 
 
@@ -574,24 +564,23 @@ class SAPRoutedStreamSocket(SAPNIStreamSocket):
         """
         # Build the route request packet
         talk_mode = talk_mode or ROUTER_TALK_MODE_NI_MSG_IO
-        router_strings = list(map(str, route))
-        # Convert bytes to string if necessary for Python 3 compatibility
+        # Use the actual serialized byte length of each hop for length calculations
+        hop_bytes_lens = [len(bytes(hop)) for hop in route]
+        # route_offset should be the length of the first hop only (offset from start of route_string to second hop)
+        route_offset = hop_bytes_lens[0] if len(hop_bytes_lens) > 1 else 0
+        # Restore target calculation for logging
         hostname = route[-1].hostname.decode('utf-8') if isinstance(route[-1].hostname, bytes) else route[-1].hostname
         port = route[-1].port.decode('utf-8') if isinstance(route[-1].port, bytes) else route[-1].port
         target = "%s:%d" % (hostname, int(port))
-        router_strings_lens = list(map(len, router_strings))
-        route_request = SAPRouter(type=SAPRouter.SAPROUTER_ROUTE,
+        log_saprouter.debug("Requesting route to %s using mode %d (%s)",
+                            target, talk_mode, router_ni_talk_mode_values[talk_mode])
+        # Send the request and grab the response
+        response = self.sr(SAPRouter(type=SAPRouter.SAPROUTER_ROUTE,
                                   route_ni_version=self.router_version,
                                   route_entries=len(route),
                                   route_talk_mode=talk_mode,
                                   route_rest_nodes=len(route) - 1,
-                                  route_length=sum(router_strings_lens),
-                                  route_offset=router_strings_lens[0],
-                                  route_string=route)
-        log_saprouter.debug("Requesting route to %s using mode %d (%s)",
-                            target, talk_mode, router_ni_talk_mode_values[talk_mode])
-        # Send the request and grab the response
-        response = self.sr(route_request)
+                                  route_string=SAPRouterRouteHop.from_hops(route)))
         response.decode_payload_as(SAPRouter)
         if SAPRouter in response:
             response = response[SAPRouter]
@@ -603,7 +592,14 @@ class SAPRoutedStreamSocket(SAPNIStreamSocket):
                 raise SAPRouteException("Route request not accepted")
             else:
                 log_saprouter.warning("Error requesting route to %s", target)
-                raise Exception("Router error:", response.err_text_value)
+                err_text = None
+                if hasattr(response, 'err_text_value') and response.err_text_value is not None:
+                    if hasattr(response.err_text_value, 'error') and response.err_text_value.error:
+                        err = response.err_text_value.error
+                        err_text = err.decode() if isinstance(err, bytes) else err
+                    else:
+                        err_text = str(response.err_text_value)
+                raise Exception("Router error:", err_text)
         else:
             log_saprouter.warning("Error requesting route to %s", target)
             raise Exception("Wrong response received")
@@ -842,7 +838,7 @@ class SAPRouterNativeProxy(SAPNIProxy):
                       route_rest_nodes=len(router_string) - 1,
                       route_length=sum(router_string_lens),
                       route_offset=router_string_lens[0],
-                      route_string=router_string)
+                      route_string=SAPRouterRouteHop.from_hops(router_string))
 
         # Send the request and grab the response
         response = router.sr(p)

@@ -18,7 +18,7 @@
 
 # Standard imports
 import struct
-from datetime import datetime
+from datetime import datetime, timezone
 # External imports
 from scapy.config import conf
 from scapy.packet import Packet
@@ -30,14 +30,14 @@ from scapy.fields import (MultiEnumField, StrLenField, Field, StrFixedLenField, 
 def saptimestamp_to_datetime(timestamp):
     """Converts a timestamp in "SAP format" to a datetime object. Time zone
     looks to be fixed at GMT+1."""
-    return datetime.utcfromtimestamp((int(timestamp) & 0xFFFFFFFF) + 1000000000)
+    return datetime.fromtimestamp((int(timestamp) & 0xFFFFFFFF) + 1000000000, timezone.utc)
 
 
 class PacketNoPadded(Packet):
     """Regular scapy packet with no padding.
     """
     def extract_padding(self, s):
-        return '', s
+        return b'', s
 
 
 class RandByteReduced(RandNum):
@@ -90,7 +90,7 @@ class MutablePacketField(StrLenField):
     def i2m(self, pkt, i):
         cls = self.get_class(pkt)
         if cls is not None:
-            return str(i)
+            return bytes(i)
         else:
             return StrLenField.i2m(self, pkt, i)
 
@@ -372,7 +372,7 @@ class TimestampField(LongField):
     """Timestamp field"""
 
     def i2h(self, pkt, x):
-        dt = datetime.utcfromtimestamp(x)
+        dt = datetime.fromtimestamp(x, timezone.utc)
         return dt.strftime("%Y-%m-%d %H:%M:%S UTC")
 
 

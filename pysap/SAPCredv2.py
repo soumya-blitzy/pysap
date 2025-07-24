@@ -41,7 +41,9 @@ from pysap.utils.crypto import dpapi_decrypt_blob
 # External imports
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.hashes import Hash, SHA256
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.ciphers import Cipher, modes
+from cryptography.hazmat.primitives.ciphers import algorithms as std_algorithms
+from cryptography.hazmat.decrepit.ciphers import algorithms as decrepit_algorithms
 
 
 # Create a logger for the Credv2 layer
@@ -216,7 +218,7 @@ class SAPCredv2_Cred(ASN1_Packet):
         iv = b"\x00" * 8
 
         # Decrypt the cipher text with the derived key and IV
-        decryptor = Cipher(algorithms.TripleDES(key), modes.CBC(iv), backend=default_backend()).decryptor()
+        decryptor = Cipher(std_algorithms.TripleDES(key), modes.CBC(iv), backend=default_backend()).decryptor()
         plain = decryptor.update(blob) + decryptor.finalize()
 
         return SAPCredv2_Cred_Plain(plain)
@@ -256,9 +258,9 @@ class SAPCredv2_Cred(ASN1_Packet):
 
         # Validate and select proper algorithm
         if header.algorithm == CIPHER_ALGORITHM_3DES:
-            return algorithms.TripleDES, derived_key[:24], header.iv[:8], header.iv[8:] + header.cipher_text
+            return decrepit_algorithms.TripleDES, derived_key[:24], header.iv[:8], header.iv[8:] + header.cipher_text
         elif header.algorithm == CIPHER_ALGORITHM_AES256:
-            return algorithms.AES, derived_key, header.iv, header.cipher_text
+            return std_algorithms.AES, derived_key, header.iv, header.cipher_text
         else:
             raise SAPCredv2_Decryption_Error("Algorithm not supported")
 

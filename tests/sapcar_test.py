@@ -56,7 +56,7 @@ class PySAPCARTest(unittest.TestCase):
             sapcar_archive = SAPCARArchive(fd, mode="r")
 
             self.assertEqual(filename, basename(sapcar_archive.filename))
-            self.assertEqual(version, sapcar_archive.version)
+            self.assertEqual(version.decode('utf-8') if isinstance(version, bytes) else version, sapcar_archive.version)
             self.assertEqual(1, len(sapcar_archive.files))
             self.assertEqual(1, len(sapcar_archive.files_names))
             self.assertListEqual([self.test_filename], sapcar_archive.files_names)
@@ -73,7 +73,7 @@ class PySAPCARTest(unittest.TestCase):
             self.assertEqual(self.test_timestamp_raw, ff.timestamp_raw)
             self.assertEqual(self.test_permissions, ff.permissions)
             self.assertEqual(self.test_perm_mode, ff.perm_mode)
-            self.assertEqual(version, ff.version)
+            self.assertEqual(version.decode('utf-8') if isinstance(version, bytes) else version, ff.version)
             self.assertTrue(ff.is_file())
             self.assertFalse(ff.is_directory())
 
@@ -264,7 +264,7 @@ class PySAPCARTest(unittest.TestCase):
             self.assertEqual(ff.file_length_high, 99999)
 
 
-def test_suite():
+def _test_suite():
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     suite.addTest(loader.loadTestsFromTestCase(PySAPCARTest))
@@ -273,5 +273,5 @@ def test_suite():
 
 if __name__ == "__main__":
     test_runner = unittest.TextTestRunner(verbosity=2, resultclass=unittest.TextTestResult)
-    result = test_runner.run(test_suite())
+    result = test_runner.run(_test_suite())
     sys.exit(not result.wasSuccessful())

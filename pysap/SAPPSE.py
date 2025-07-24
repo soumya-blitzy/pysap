@@ -38,7 +38,8 @@ from pysap.utils.fields import ASN1F_CHOICE_SAFE
 # External imports
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.primitives.hashes import SHA1
-from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.primitives.ciphers import Cipher, modes
+from cryptography.hazmat.decrepit.ciphers import algorithms
 
 
 # Create a logger for the PSE layer
@@ -278,6 +279,10 @@ class SAPPSEFile(ASN1_Packet):
         :raise Exception: if the algorithm specified is not valid
         """
 
+        # Ensure pin is bytes
+        if isinstance(pin, str):
+            pin = pin.encode('utf-8')
+
         # Decrypt the encryption key using the LPS method
         cipher = SAPLPSCipher(self.enc_cont.encrypted_pin.val)
         log_pse.debug("Obtained LPS cipher object (version={}, lps={})".format(cipher.version,
@@ -328,6 +333,10 @@ class SAPPSEFile(ASN1_Packet):
             raise NotImplementedError("PBE algorithm not implemented")
         else:
             raise Exception("Invalid PBE algorithm")
+
+        # Ensure pin is bytes
+        if isinstance(pin, str):
+            pin = pin.encode('utf-8')
 
         # Build the PBE class
         pbes = pbes_cls(salt, iterations, iv, pin, hash_algorithm, enc_algorithm, enc_mode, default_backend())

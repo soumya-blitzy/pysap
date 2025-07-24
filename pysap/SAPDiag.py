@@ -449,6 +449,13 @@ class SAPDiagItem(PacketNoPadded):
                                       )
                    ]
 
+    def __init__(self, *args, **kwargs):
+        if 'item_value' in kwargs:
+            print(f"[DEBUG] SAPDiagItem.__init__: item_value type={type(kwargs['item_value'])}, value={repr(kwargs['item_value'])}")
+            if isinstance(kwargs['item_value'], str):
+                kwargs['item_value'] = kwargs['item_value'].encode('utf-8')
+        super().__init__(*args, **kwargs)
+
 
 # SAP Diag Items container
 class SAPDiagItems(Packet):
@@ -457,7 +464,7 @@ class SAPDiagItems(Packet):
     Container for :class:`SAPDiagItem` packets.
     """
     name = "SAP Diag Items"
-    fields_desc = [PacketListField("message", None, SAPDiagItem)]
+    fields_desc = [PacketListField("message", None, SAPDiagItem, max_count=131)]
 
 
 # Compression Flag values

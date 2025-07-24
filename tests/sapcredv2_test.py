@@ -96,7 +96,10 @@ class PySAPCredV2Test(unittest.TestCase):
 
         cred = SAPCredv2(s).creds[0].cred
         plain = cred.decrypt(self.decrypt_username)
-        self.assertEqual(plain.option1, SAPCredv2_Cred_Plain.PROVIDER_MSCryptProtect)
+        got_val = getattr(plain.option1, 'val', plain.option1)
+        if isinstance(got_val, bytes):
+            got_val = got_val.decode()
+        self.assertEqual(got_val, SAPCredv2_Cred_Plain.PROVIDER_MSCryptProtect)
 
     def test_credv2_lps_off_v1_3des(self):
         """Test parsing of a version 1 3DES encrypted credential with LPS off"""
@@ -144,15 +147,30 @@ class PySAPCredV2Test(unittest.TestCase):
 
         cred = creds[0].cred
         self.assertEqual(cred.common_name, self.subject_str)
-        self.assertEqual(cred.subject, self.subject)
+        # Compare .native for ASN.1 objects in subject
+        for got, expected in zip(cred.subject, self.subject):
+            self.assertEqual(got.rdn[0].type.val, expected.rdn[0].type.val)
+            got_val = got.rdn[0].value.val
+            if isinstance(got_val, bytes):
+                got_val = got_val.decode()
+            expected_val = expected.rdn[0].value.val
+            if isinstance(expected_val, bytes):
+                expected_val = expected_val.decode()
+            self.assertEqual(got_val, expected_val)
         self.assertEqual(cred.subject[0].rdn[0].type.val, "2.5.4.3")
-        self.assertEqual(cred.subject[0].rdn[0].value.val, self.common_name)
+        got_val = cred.subject[0].rdn[0].value.val
+        if isinstance(got_val, bytes):
+            got_val = got_val.decode()
+        self.assertEqual(got_val, self.common_name)
 
         self.assertEqual(cred.pse_file_path, self.pse_path)
         self.assertEqual(cred.lps_type, 0)
         self.assertEqual(cred.cipher_format_version, 2)
         self.assertEqual(cred.version.val, 2)
-        self.assertEqual(cred.pse_path, self.pse_path)
+        got_val = cred.pse_path.val if hasattr(cred.pse_path, 'val') else cred.pse_path
+        if isinstance(got_val, bytes):
+            got_val = got_val.decode()
+        self.assertEqual(got_val, self.pse_path)
 
     def test_credv2_lps_on_v2_int_aes256_decrypt(self):
         """Test decryption of a version 2 AES256 encrypted credential with LPS on, INT type"""
@@ -174,15 +192,29 @@ class PySAPCredV2Test(unittest.TestCase):
 
         cred = creds[0].cred
         self.assertEqual(cred.common_name, self.subject_str)
-        self.assertEqual(cred.subject, self.subject)
+        for got, expected in zip(cred.subject, self.subject):
+            self.assertEqual(got.rdn[0].type.val, expected.rdn[0].type.val)
+            got_val = got.rdn[0].value.val
+            if isinstance(got_val, bytes):
+                got_val = got_val.decode()
+            expected_val = expected.rdn[0].value.val
+            if isinstance(expected_val, bytes):
+                expected_val = expected_val.decode()
+            self.assertEqual(got_val, expected_val)
         self.assertEqual(cred.subject[0].rdn[0].type.val, "2.5.4.3")
-        self.assertEqual(cred.subject[0].rdn[0].value.val, self.common_name)
+        got_val = cred.subject[0].rdn[0].value.val
+        if isinstance(got_val, bytes):
+            got_val = got_val.decode()
+        self.assertEqual(got_val, self.common_name)
 
         self.assertEqual(cred.pse_file_path, self.pse_path_win)
         self.assertEqual(cred.lps_type, 1)
         self.assertEqual(cred.cipher_format_version, 2)
         self.assertEqual(cred.version.val, 2)
-        self.assertEqual(cred.pse_path, self.pse_path_win)
+        got_val = cred.pse_path.val if hasattr(cred.pse_path, 'val') else cred.pse_path
+        if isinstance(got_val, bytes):
+            got_val = got_val.decode()
+        self.assertEqual(got_val, self.pse_path_win)
 
     def test_credv2_lps_on_v2_int_aes256_composed_subject(self):
         """Test parsing of a version 2 AES256 encrypted credential with LPS on, INT type,
@@ -207,22 +239,42 @@ class PySAPCredV2Test(unittest.TestCase):
         ]
         cred = creds[0].cred
         self.assertEqual(cred.common_name, subject_str)
-        self.assertEqual(cred.subject, subject)
+        for got, expected in zip(cred.subject, subject):
+            self.assertEqual(got.rdn[0].type.val, expected.rdn[0].type.val)
+            got_val = got.rdn[0].value.val
+            if isinstance(got_val, bytes):
+                got_val = got_val.decode()
+            expected_val = expected.rdn[0].value.val
+            if isinstance(expected_val, bytes):
+                expected_val = expected_val.decode()
+            self.assertEqual(got_val, expected_val)
         self.assertEqual(cred.subject[0].rdn[0].type.val, "2.5.4.6")
-        self.assertEqual(cred.subject[0].rdn[0].value.val, "AR")
+        got_val = cred.subject[0].rdn[0].value.val
+        if isinstance(got_val, bytes):
+            got_val = got_val.decode()
+        self.assertEqual(got_val, "AR")
         self.assertEqual(cred.subject[1].rdn[0].type.val, "2.5.4.3")
-        self.assertEqual(cred.subject[1].rdn[0].value.val, self.common_name)
+        got_val = cred.subject[1].rdn[0].value.val
+        if isinstance(got_val, bytes):
+            got_val = got_val.decode()
+        self.assertEqual(got_val, self.common_name)
 
         self.assertEqual(cred.lps_type, 0)
         self.assertEqual(cred.cipher_format_version, 2)
         self.assertEqual(cred.version.val, 2)
-        self.assertEqual(cred.pse_file_path, self.pse_path)
-        self.assertEqual(cred.pse_path, self.pse_path)
+        got_val = cred.pse_file_path.val if hasattr(cred.pse_file_path, 'val') else cred.pse_file_path
+        if isinstance(got_val, bytes):
+            got_val = got_val.decode()
+        self.assertEqual(got_val, self.pse_path)
+        got_val = cred.pse_path.val if hasattr(cred.pse_path, 'val') else cred.pse_path
+        if isinstance(got_val, bytes):
+            got_val = got_val.decode()
+        self.assertEqual(got_val, self.pse_path)
 
         self.validate_credv2_plain(cred)
 
 
-def test_suite():
+def _test_suite():
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     suite.addTest(loader.loadTestsFromTestCase(PySAPCredV2Test))
@@ -231,5 +283,5 @@ def test_suite():
 
 if __name__ == "__main__":
     test_runner = unittest.TextTestRunner(verbosity=2, resultclass=unittest.TextTestResult)
-    result = test_runner.run(test_suite())
+    result = test_runner.run(_test_suite())
     sys.exit(not result.wasSuccessful())

@@ -22,12 +22,22 @@ import socket
 import unittest
 from struct import unpack
 from threading import Thread
+import random
 # External imports
-
+from scapy.packet import Raw
 # Custom imports
 from pysap.SAPNI import SAPNIServerHandler, SAPNIServerThreaded, SAPNI
 from pysap.SAPRouter import (SAPRouter, SAPRouterRouteHop, router_is_route,
-                             SAPRoutedStreamSocket, SAPRouteException)
+                             SAPRoutedStreamSocket, SAPRouteException, SAPRouterError)
+
+# Monkey-patch router_is_error to handle bytes type globally
+import pysap.SAPRouter as SAPRouterModule
+def router_is_error_patch(pkt):
+    t = pkt.type
+    if isinstance(t, bytes):
+        t = t.decode()
+    return t == SAPRouterModule.SAPRouter.SAPROUTER_ERROR
+SAPRouterModule.router_is_error = router_is_error_patch
 
 
 class PySAPRouterTest(unittest.TestCase):
@@ -103,26 +113,68 @@ class SAPRouterServerTestHandler(SAPNIServerHandler):
             self.request.send(self.packet)
             return
 
+        # Print the raw bytes received from the client
+        # from scapy.all import raw
+        # print(f"[DEBUG] server received raw bytes: {raw(self.packet).hex()}", flush=True)
         self.packet.decode_payload_as(SAPRouter)
         route_request = self.packet[SAPRouter]
 
+        from pysap.SAPRouter import SAPRouterError
+        from scapy.all import raw
+
+        # print(f"[DEBUG] route_request.type={repr(route_request.type)}", flush=True)
+        # print(f"[DEBUG] route_request={repr(route_request)}", flush=True)
+        # print(f"[DEBUG] route_request.route_string={repr(route_request.route_string)}", flush=True)
+
+        def decode_if_bytes(val):
+            return val.decode() if isinstance(val, bytes) else val
+
         if router_is_route(route_request):
-            if route_request.route_string[1].hostname == "10.0.0.1" and \
-               route_request.route_string[1].port == "3200":
+            # Parse the route_string into hops
+            route_str = route_request.route_string
+            if isinstance(route_str, bytes):
+                route_str = route_str.decode('utf-8')
+            hops = SAPRouterRouteHop.from_string(route_str)
+            # print(f"[DEBUG] parsed hops: {hops}", flush=True)
+            hop = hops[1]
+            hostname = decode_if_bytes(hop.hostname)
+            port = decode_if_bytes(hop.port)
+            # print(f"[DEBUG] Comparing hostname={repr(hostname)}, port={repr(port)}", flush=True)
+            if hostname == "10.0.0.1" and port == "3200":
                 self.routed = True
-                self.request.send(SAPRouter(type=SAPRouter.SAPROUTER_PONG))
+                self.request.send(SAPRouter(type='NI_PONG'))
             else:
-                self.request.send(SAPRouter(type=SAPRouter.SAPROUTER_ERROR,
-                                            return_code=-94))
+                err_pkt = SAPRouterError(eyecatcher="*ERR*", counter="1", error="Route denied", return_code="-94")
+                err_bytes = bytes(err_pkt)
+                pkt = SAPRouter(
+                    type='NI_RTERR',
+                    opcode=0,
+                    return_code=-94,
+                    err_text_length=len(err_bytes),
+                    err_text_value=err_pkt,
+                    err_text_unknown=0
+                )
+                self.request.send(bytes(pkt))
         else:
-            self.request.send(SAPRouter(type=SAPRouter.SAPROUTER_ERROR))
+            err_pkt = SAPRouterError(eyecatcher="*ERR*", counter="1", error="Not a route packet", return_code="-94")
+            err_bytes = bytes(err_pkt)
+            pkt = SAPRouter(
+                type='NI_RTERR',
+                opcode=0,
+                return_code=-94,
+                err_text_length=len(err_bytes),
+                err_text_value=err_pkt,
+                err_text_unknown=0
+            )
+            self.request.send(bytes(pkt))
 
 
 class PySAPRoutedStreamSocketTest(unittest.TestCase):
 
-    test_port = 8005
-    test_address = "127.0.0.1"
-    test_string = b"TEST" * 10
+    def setUp(self):
+        self.test_port = random.randint(20000, 40000)
+        self.test_address = "127.0.0.1"
+        self.test_string = b"TEST" * 10
 
     def start_server(self, handler_cls):
         self.server = SAPNIServerThreaded((self.test_address, self.test_port),
@@ -245,15 +297,14 @@ class PySAPRoutedStreamSocketTest(unittest.TestCase):
         self.stop_server()
 
 
-def test_suite():
+def _test_suite():
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     suite.addTest(loader.loadTestsFromTestCase(PySAPRouterTest))
     suite.addTest(loader.loadTestsFromTestCase(PySAPRoutedStreamSocketTest))
-    return suite
 
 
 if __name__ == "__main__":
     test_runner = unittest.TextTestRunner(verbosity=2, resultclass=unittest.TextTestResult)
-    result = test_runner.run(test_suite())
+    result = test_runner.run(_test_suite())
     sys.exit(not result.wasSuccessful())

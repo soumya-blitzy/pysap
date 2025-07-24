@@ -278,7 +278,7 @@ class PySAPSSFSDataDecryptETest(unittest.TestCase):
                 pass
 
 
-def test_suite():
+def _test_suite():
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     suite.addTest(loader.loadTestsFromTestCase(PySAPSSFSKeyTest))
@@ -288,4 +288,4 @@ def test_suite():
 
 
 if __name__ == "__main__":
-    unittest.TextTestRunner(verbosity=2).run(test_suite())
+    unittest.TextTestRunner(verbosity=2).run(_test_suite())

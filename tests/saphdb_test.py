@@ -21,16 +21,23 @@ import sys
 import unittest
 from threading import Thread
 from socketserver import BaseRequestHandler, ThreadingTCPServer
+import random
 # Custom imports
-from pysap.SAPHDB import SAPHDBConnection
+from pysap.SAPHDB import SAPHDBConnection, SAPHDBInitializationReply
 
 
 class SAPHDBServerTestHandler(BaseRequestHandler):
     """Basic SAP HDB server that performs initialization."""
 
+    def handle(self):
+        self.handle_data()
+
     def handle_data(self):
         self.request.recv(14)
-        self.request.send(b"\x00" * 8)
+        import struct
+        reply_bytes = struct.pack('<bHbHH', 1, 0, 1, 0, 0)
+        print(f"[DEBUG] Server sending reply_bytes: {reply_bytes.hex()}")
+        self.request.send(reply_bytes)
 
 
 class PySAPHDBConnectionTest(unittest.TestCase):
@@ -39,6 +46,9 @@ class PySAPHDBConnectionTest(unittest.TestCase):
     test_address = "127.0.0.1"
 
     def start_server(self, address, port, handler_cls):
+        # Use a random port if port is None
+        if port is None:
+            port = random.randint(20000, 40000)
         self.server = ThreadingTCPServer((address, port),
                                          handler_cls,
                                          bind_and_activate=False)
@@ -48,6 +58,7 @@ class PySAPHDBConnectionTest(unittest.TestCase):
         self.server_thread = Thread(target=self.server.serve_forever)
         self.server_thread.daemon = True
         self.server_thread.start()
+        self.test_port = port
 
     def stop_server(self):
         self.server.shutdown()
@@ -65,7 +76,7 @@ class PySAPHDBConnectionTest(unittest.TestCase):
         self.stop_server()
 
 
-def test_suite():
+def _test_suite():
     loader = unittest.TestLoader()
     suite = unittest.TestSuite()
     suite.addTest(loader.loadTestsFromTestCase(PySAPHDBConnectionTest))
@@ -74,5 +85,5 @@ def test_suite():
 
 if __name__ == "__main__":
     test_runner = unittest.TextTestRunner(verbosity=2, resultclass=unittest.TextTestResult)
-    result = test_runner.run(test_suite())
+    result = test_runner.run(_test_suite())
     sys.exit(not result.wasSuccessful())

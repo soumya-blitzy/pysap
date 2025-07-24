@@ -103,8 +103,7 @@ class PKCS12_PBKDF1(object):
 
     def derive(self, password):
         if not isinstance(password, bytes):
-            raise TypeError("key_material must be bytes.")
-
+            password = password.encode('utf-8')
         # Convert the password to UNICODE
         password = password.decode('utf-8').encode("utf-16be") + b'\x00\x00'
 

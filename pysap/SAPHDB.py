@@ -1358,7 +1358,9 @@ class SAPHDBConnection(object):
         self.send(init_request)
 
         # Receive initialization response packet
-        init_reply = SAPHDBInitializationReply(self._stream_socket.recv(8))  # We use the raw socket recv here
+        raw_reply = self._stream_socket.recv(8)
+        print(f"[DEBUG] Client received raw_reply: {bytes(raw_reply).hex()}")
+        init_reply = SAPHDBInitializationReply(bytes(raw_reply))  # Ensure we pass bytes, not Raw
         self.product_version = init_reply.product_major
         self.protocol_version = init_reply.protocol_major
 

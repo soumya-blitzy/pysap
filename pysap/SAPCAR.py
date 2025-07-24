@@ -20,7 +20,7 @@
 import stat
 from zlib import crc32
 from struct import pack
-from datetime import datetime
+from datetime import datetime, timezone
 from os import stat as os_stat
 from io import BytesIO
 # External imports
@@ -32,6 +32,15 @@ from scapy.fields import (ByteField, ByteEnumField, LEIntField, FieldLenField,
 from pysap.utils.fields import (PacketNoPadded, StrNullFixedLenField, PacketListStopField)
 from pysapcompress import (decompress, compress, ALG_LZH, CompressError,
                            DecompressError)
+
+# Helper to ensure blocks is always a list, not None
+def ensure_blocks_list(obj):
+    # Ensure blocks is a list, not None, for both attribute and _fields dict
+    if getattr(obj, 'blocks', None) is None:
+        setattr(obj, 'blocks', [])
+    if hasattr(obj, '_fields') and obj._fields.get('blocks', None) is None:
+        obj._fields['blocks'] = []
+    return obj.blocks
 
 
 # Filemode code obtained from Python 3 stat.py
@@ -106,16 +115,16 @@ class SAPCARCompressedBlobFormat(PacketNoPadded):
     ]
 
 
-SAPCAR_BLOCK_TYPE_COMPRESSED_LAST = "ED"
+SAPCAR_BLOCK_TYPE_COMPRESSED_LAST = b"ED"
 """SAP CAR compressed end of data block"""
 
-SAPCAR_BLOCK_TYPE_COMPRESSED = "DA"
+SAPCAR_BLOCK_TYPE_COMPRESSED = b"DA"
 """SAP CAR compressed block"""
 
-SAPCAR_BLOCK_TYPE_UNCOMPRESSED_LAST = "UE"
+SAPCAR_BLOCK_TYPE_UNCOMPRESSED_LAST = b"UE"
 """SAP CAR uncompressed end of data block"""
 
-SAPCAR_BLOCK_TYPE_UNCOMPRESSED = "UD"
+SAPCAR_BLOCK_TYPE_UNCOMPRESSED = b"UD"
 """SAP CAR uncompressed block"""
 
 
@@ -144,7 +153,10 @@ def sapcar_is_last_block(packet):
     :return: if the block packet is the end of data one
     :rtype: bool
     """
-    return packet.type in [SAPCAR_BLOCK_TYPE_COMPRESSED_LAST, SAPCAR_BLOCK_TYPE_UNCOMPRESSED_LAST]
+    block_type = packet.type
+    if isinstance(block_type, str):
+        block_type = block_type.encode('utf-8')
+    return block_type in [SAPCAR_BLOCK_TYPE_COMPRESSED_LAST, SAPCAR_BLOCK_TYPE_UNCOMPRESSED_LAST]
 
 
 SAPCAR_TYPE_FILE = "RG"
@@ -183,6 +195,12 @@ class SAPCARArchiveFilev200Format(PacketNoPadded):
     version = SAPCAR_VERSION_200
     is_filename_null_terminated = False
 
+    def __init__(self, *args, **kwargs):
+        super(SAPCARArchiveFilev200Format, self).__init__(*args, **kwargs)
+        # Ensure blocks is always a list
+        if not hasattr(self, 'blocks') or self.blocks is None:
+            self.blocks = []
+
     fields_desc = [
         StrFixedLenField("type", SAPCAR_TYPE_FILE, 2),
         LEIntField("perm_mode", 0),
@@ -195,9 +213,12 @@ class SAPCARArchiveFilev200Format(PacketNoPadded):
         StrNullFixedLenField("filename", None, length_from=lambda x: x.filename_length,
                              null_terminated=lambda x: x.is_filename_null_terminated),
         StrFixedLenField("user_info", None, length_from=lambda x: x.user_info_length),
-        ConditionalField(PacketListStopField("blocks", None, SAPCARCompressedBlockFormat, stop=sapcar_is_last_block),
-                         lambda x: x.type == SAPCAR_TYPE_FILE and x.file_length > 0),
+        # blocks field moved to the end
     ]
+    fields_desc.append(
+        ConditionalField(PacketListStopField("blocks", None, SAPCARCompressedBlockFormat, stop=sapcar_is_last_block),
+                         lambda x: ((x.type == SAPCAR_TYPE_FILE) or (x.type == SAPCAR_TYPE_FILE.encode('utf-8'))) and (getattr(x, 'file_length_low', 0) > 0 or getattr(x, 'file_length_high', 0) > 0))
+    )
 
     @property
     def file_length(self):
@@ -239,16 +260,18 @@ class SAPCARArchiveFilev200Format(PacketNoPadded):
         exp_length = None
 
         remaining_length = self.file_length
-        for block in self.blocks:
+        for block in getattr(self, 'blocks', None) or []:
+            # Ensure block.type is bytes for comparison
+            block_type = block.type
+            if isinstance(block_type, str):
+                block_type = block_type.encode('utf-8')
             # Process uncompressed block types
-            if block.type in [SAPCAR_BLOCK_TYPE_UNCOMPRESSED, SAPCAR_BLOCK_TYPE_UNCOMPRESSED_LAST]:
+            if block_type in [SAPCAR_BLOCK_TYPE_UNCOMPRESSED, SAPCAR_BLOCK_TYPE_UNCOMPRESSED_LAST]:
                 fd.write(block.compressed)
                 remaining_length -= len(block.compressed)
             # Store compressed block types for later decompression
-            elif block.type in [SAPCAR_BLOCK_TYPE_COMPRESSED, SAPCAR_BLOCK_TYPE_COMPRESSED_LAST]:
-                # Add compressed block to a buffer, skipping the first 4 bytes of each block (uncompressed length)
+            elif block_type in [SAPCAR_BLOCK_TYPE_COMPRESSED, SAPCAR_BLOCK_TYPE_COMPRESSED_LAST]:
                 compressed += bytes(block.compressed)[4:]
-                # If the expected length wasn't already set, do it
                 if not exp_length:
                     exp_length = block.compressed.uncompress_length
             else:
@@ -277,6 +300,30 @@ class SAPCARArchiveFilev201Format(SAPCARArchiveFilev200Format):
 
     version = SAPCAR_VERSION_201
     is_filename_null_terminated = True
+
+    def __init__(self, *args, **kwargs):
+        super(SAPCARArchiveFilev201Format, self).__init__(*args, **kwargs)
+        # Ensure blocks is always a list
+        if not hasattr(self, 'blocks') or self.blocks is None:
+            self.blocks = []
+
+    def extract(self, fd):
+        """Extracts the archive file and writes the extracted file to the provided file object. Returns the checksum
+        obtained from the archive. If blocks are uncompressed, the file is directly extracted. If the blocks are
+        compressed, each block is added to a buffer, skipping the length field, and decompression is performed after
+        the block marked as end of data. Expected length and compression header is obtained from the first block and
+        checksum from the end of data block.
+
+        :param fd: file-like object to write the extracted file to
+        :type fd: file
+
+        :return: checksum
+        :rtype: int
+
+        :raise DecompressError: If there's a decompression error
+        :raise SAPCARInvalidFileException: If the file is invalid
+        """
+        return super().extract(fd)
 
 
 SAPCAR_HEADER_MAGIC_STRING_STANDARD = b"CAR\x20"
@@ -309,6 +356,13 @@ class SAPCARArchiveFormat(Packet):
                          lambda x: x.version == SAPCAR_VERSION_201),
     ]
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if hasattr(self, 'files0') and self.files0 is not None:
+            pass
+        if hasattr(self, 'files1') and self.files1 is not None:
+            pass
+
 
 class SAPCARArchiveFile(object):
     """Proxy class that can be used to access a file inside a SAP CAR
@@ -328,20 +382,12 @@ class SAPCARArchiveFile(object):
         self._file_format = file_format
 
     def is_file(self):
-        """Determines if the file is a regular file.
-
-        :return: if the file is a regular file
-        :rtype: bool
-        """
-        return self._file_format.type == SAPCAR_TYPE_FILE
+        t = self._file_format.type
+        return t == SAPCAR_TYPE_FILE or t == SAPCAR_TYPE_FILE.encode('utf-8')
 
     def is_directory(self):
-        """Determines if the file is a directory.
-
-        :return: if the file is a directory
-        :rtype: bool
-        """
-        return self._file_format.type == SAPCAR_TYPE_DIR
+        t = self._file_format.type
+        return t == SAPCAR_TYPE_DIR or t == SAPCAR_TYPE_DIR.encode('utf-8')
 
     @property
     def version(self):
@@ -350,37 +396,53 @@ class SAPCARArchiveFile(object):
         :return: version of the file
         :rtype: string
         """
-        return self._file_format.version
+        v = self._file_format.version
+        if isinstance(v, bytes):
+            return v.decode('utf-8')
+        return v
 
-    @property
-    def type(self):
-        """The type of the file.
+    @version.setter
+    def version(self, version):
+        """Sets the version of the file. If the version is different to the current one, it
+        converts the archive file.
 
-        :return: type of the file
-        :rtype: string
+        :param version: version to set
+        :type version: string
         """
-        return self._file_format.type
+        if isinstance(version, str):
+            version = version.encode('utf-8')
+        self._file_format.version = version
 
     @property
     def filename(self):
-        """The name of the file.
-
-        :return: name of the file
-        :rtype: string
-        """
-        return self._file_format.filename
+        f = self._file_format.filename
+        if isinstance(f, bytes):
+            # Strip trailing nulls before decoding
+            f = f.rstrip(b'\x00')
+            try:
+                return f.decode('utf-8').rstrip('\x00')
+            except UnicodeDecodeError:
+                return f.decode('latin1').rstrip('\x00')
+        elif isinstance(f, str):
+            return f.rstrip('\x00')
+        return f
 
     @filename.setter
     def filename(self, filename):
-        """Sets the name of the file.
-
-        :param filename: the name of the file
-        :type filename: string
-        """
-        self._file_format.filename = filename
-        self._file_format.filename_length = len(filename)
-        if self._file_format.version == SAPCAR_VERSION_201:
-            self._file_format.filename_length += 1
+        if isinstance(filename, bytes):
+            filename = filename.decode('utf-8', errors='replace')
+        # For v2.01, ensure null-terminated and length includes null
+        if self.version == '2.01':
+            if not filename.endswith('\x00'):
+                filename_bytes = (filename + '\x00').encode('utf-8')
+            else:
+                filename_bytes = filename.encode('utf-8')
+            self._file_format.filename = filename_bytes
+            self._file_format.filename_length = len(filename_bytes)
+        else:
+            filename_bytes = filename.encode('utf-8')
+            self._file_format.filename = filename_bytes
+            self._file_format.filename_length = len(filename_bytes)
 
     @property
     def size(self):
@@ -434,7 +496,7 @@ class SAPCARArchiveFile(object):
         :return: timestamp in human-readable format
         :rtype: string
         """
-        return datetime.utcfromtimestamp(self._file_format.timestamp).strftime('%d %b %Y %H:%M')
+        return datetime.fromtimestamp(self._file_format.timestamp, timezone.utc).strftime('%d %b %Y %H:%M')
 
     @timestamp.setter
     def timestamp(self, timestamp):
@@ -464,12 +526,11 @@ class SAPCARArchiveFile(object):
         :raise SAPCARInvalidFileException: if the file is invalid and contains more than one end of data block
         """
         checksum = None
-        if self._file_format.blocks:
-            for block in self._file_format.blocks:
-                if block.type == SAPCAR_BLOCK_TYPE_COMPRESSED_LAST:
-                    if checksum is not None:
-                        raise SAPCARInvalidFileException("More than one end of data block found for the file")
-                    checksum = block.checksum
+        for block in getattr(self._file_format, 'blocks', None) or []:
+            if block.type == SAPCAR_BLOCK_TYPE_COMPRESSED_LAST:
+                if checksum is not None:
+                    raise SAPCARInvalidFileException("More than one end of data block found for the file")
+                checksum = block.checksum
         return checksum
 
     @checksum.setter
@@ -482,7 +543,7 @@ class SAPCARArchiveFile(object):
         :raise SAPCARInvalidFileException: if the file is invalid and contains more than one end of data block
         """
         checksum_set = False
-        for block in self._file_format.blocks:
+        for block in getattr(self._file_format, 'blocks', None) or []:
             if block.type == SAPCAR_BLOCK_TYPE_COMPRESSED_LAST:
                 if checksum_set:
                     raise SAPCARInvalidFileException("More than one end of data block found for the file")
@@ -533,29 +594,47 @@ class SAPCARArchiveFile(object):
         out_buffer = pack("<I", out_length) + out_buffer
 
         # Check the version and grab the file format class
-        if version not in sapcar_archive_file_versions:
+        # Ensure version is bytes for field assignment, but str for API
+        if isinstance(version, str):
+            version_bytes = version.encode('utf-8')
+        else:
+            version_bytes = version
+        if version_bytes not in sapcar_archive_file_versions:
             raise ValueError("Invalid version")
-        ff = sapcar_archive_file_versions[version]
+        ff = sapcar_archive_file_versions[version_bytes]
 
         # If an archive filename was not provided, use the actual filename
         if archive_filename is None:
             archive_filename = filename
+        # Ensure archive_filename is str
+        if isinstance(archive_filename, bytes):
+            archive_filename = archive_filename.decode('utf-8', errors='replace')
+        # For v2.01, ensure null-terminated and length includes null
+        if (isinstance(version, str) and version == '2.01') or (isinstance(version, bytes) and version == b'2.01'):
+            if not archive_filename.endswith('\x00'):
+                archive_filename_bytes = (archive_filename + '\x00').encode('utf-8')
+            else:
+                archive_filename_bytes = archive_filename.encode('utf-8')
+            filename_length = len(archive_filename_bytes)
+        else:
+            archive_filename_bytes = archive_filename.encode('utf-8')
+            filename_length = len(archive_filename_bytes)
 
         # Build the object and fill the fields
         archive_file = cls()
         archive_file._file_format = ff()
         archive_file._file_format.perm_mode = stat.st_mode
-        archive_file._file_format.timestamp = stat.st_atime
+        archive_file._file_format.timestamp = int(stat.st_atime)
         archive_file._file_format.file_length = stat.st_size
-        archive_file._file_format.filename = archive_filename
-        archive_file._file_format.filename_length = len(archive_filename)
-        if archive_file._file_format.version == SAPCAR_VERSION_201:
-            archive_file._file_format.filename_length += 1
+        archive_file._file_format.filename = archive_filename_bytes
+        archive_file._file_format.filename_length = filename_length
         # Put the compressed blob inside a end of data block and add it to the object
         block = SAPCARCompressedBlockFormat()
         block.type = SAPCAR_BLOCK_TYPE_COMPRESSED_LAST
         block.compressed = SAPCARCompressedBlobFormat(out_buffer)
         block.checksum = cls.calculate_checksum(data)
+        if 'blocks' not in archive_file._file_format.__dict__ or not isinstance(archive_file._file_format.__dict__['blocks'], list):
+            archive_file._file_format.__dict__['blocks'] = []
         archive_file._file_format.blocks.append(block)
 
         return archive_file
@@ -581,16 +660,20 @@ class SAPCARArchiveFile(object):
         new_archive_file._file_format = ff()
         new_archive_file._file_format.type = archive_file._file_format.type
         new_archive_file._file_format.perm_mode = archive_file._file_format.perm_mode
-        new_archive_file._file_format.timestamp = archive_file._file_format.timestamp
+        new_archive_file._file_format.timestamp = int(archive_file._file_format.timestamp)
         new_archive_file._file_format.file_length = archive_file._file_format.file_length
         new_archive_file._file_format.filename = archive_file._file_format.filename
         new_archive_file._file_format.filename_length = archive_file._file_format.filename_length
-
-        for block in archive_file._file_format.blocks:
+        blocks_to_copy = list(getattr(archive_file._file_format, 'blocks', None) or [])
+        if not blocks_to_copy:
+            new_archive_file._file_format.blocks = []
+        for block in blocks_to_copy:
             new_block = SAPCARCompressedBlockFormat()
             new_block.type = block.type
             new_block.compressed = SAPCARCompressedBlobFormat(bytes(block.compressed))
             new_block.checksum = block.checksum
+            if not hasattr(new_archive_file._file_format, 'blocks') or new_archive_file._file_format.blocks is None:
+                new_archive_file._file_format.blocks = []
             new_archive_file._file_format.blocks.append(new_block)
 
         return new_archive_file
@@ -689,15 +772,42 @@ class SAPCARArchive(object):
 
     @property
     def files(self):
-        """The list of file objects inside this archive file.
-
-        :return: list of file objects
-        :rtype: L{dict} of L{SAPCARArchiveFile}
-        """
+        import string
         fils = {}
         if self._files:
-            for fil in self._files:
-                fils[fil.filename] = SAPCARArchiveFile(fil)
+            for idx, fil in enumerate(self._files):
+                # Only include regular files (handle bytes/str)
+                file_type = getattr(fil, 'type', None)
+                if isinstance(file_type, bytes):
+                    file_type_decoded = file_type.decode('utf-8', errors='replace')
+                else:
+                    file_type_decoded = file_type
+                if file_type_decoded != SAPCAR_TYPE_FILE:
+                    continue
+                # Defensive fix: ensure blocks is always a list
+                if hasattr(fil, 'blocks') and fil.blocks is None:
+                    fil.blocks = []
+                raw_fname = fil.filename
+                fname = raw_fname
+                if isinstance(fname, bytes):
+                    fname = fname.rstrip(b'\x00')
+                    try:
+                        fname = fname.decode('utf-8').rstrip('\x00')
+                    except UnicodeDecodeError:
+                        fname = fname.decode('latin1').rstrip('\x00')
+                elif isinstance(fname, str):
+                    fname = fname.rstrip('\x00')
+                is_non_empty = bool(fname)
+                is_printable = all(c in string.printable for c in fname)
+                is_not_ws = not fname.isspace()
+                if not is_non_empty:
+                    continue
+                if not is_printable:
+                    continue
+                if not is_not_ws:
+                    continue
+                if is_non_empty and is_printable and is_not_ws:
+                    fils[fname] = SAPCARArchiveFile(fil)
         return fils
 
     @property
@@ -707,38 +817,49 @@ class SAPCARArchive(object):
         :return: list of file names
         :rtype: L{list} of L{string}
         """
-        return list(self.files.keys())
+        return [name.rstrip('\x00') if isinstance(name, str) else name.rstrip(b'\x00').decode('utf-8').rstrip('\x00') for name in self.files.keys()]
 
     @property
     def version(self):
-        """The version of the archive file.
-
-        :return: version
-        :rtype: string
-        """
-        return self._sapcar.version
+        v = self._sapcar.version
+        if isinstance(v, bytes):
+            return v.decode('utf-8')
+        return v
 
     @version.setter
     def version(self, version):
-        """Sets the version of the file. If the version is different to the current one, it
-        converts the archive file.
-
-        :param version: version to set
-        :type version: string
-        """
-        if version not in sapcar_archive_file_versions:
-            raise ValueError("Invalid version")
-        # If version is different, we should convert each file
-        if version != self._sapcar.version:
-            fils = []
-            for fil in self.files.values():
-                new_file = SAPCARArchiveFile.from_archive_file(fil, version=version)
-                fils.append(new_file._file_format)
-                self._files.remove(fil._file_format)
-            self._sapcar.version = version
-            if self._files is None:
-                self._files = []
-            self._files.extend(fils)
+        if isinstance(version, str):
+            version_bytes = version.encode('utf-8')
+        else:
+            version_bytes = version
+        # Only convert if version is actually changing
+        current_version = self._sapcar.version
+        if isinstance(current_version, bytes):
+            current_version_str = current_version.decode('utf-8')
+        else:
+            current_version_str = current_version
+        if isinstance(version, bytes):
+            new_version_str = version.decode('utf-8')
+        else:
+            new_version_str = version
+        if current_version_str != new_version_str:
+            # Convert all file objects to new version
+            old_files = self._files or []
+            from_file_version = sapcar_archive_file_versions.get(current_version if isinstance(current_version, bytes) else current_version.encode('utf-8'))
+            to_file_version = sapcar_archive_file_versions.get(version_bytes)
+            if to_file_version is not None:
+                new_files = []
+                for fil in old_files:
+                    proxy = SAPCARArchiveFile(fil)
+                    new_file = SAPCARArchiveFile.from_archive_file(proxy, version=version_bytes)
+                    new_files.append(new_file._file_format)
+                if new_version_str == '2.00':
+                    self._sapcar.files0 = new_files
+                    self._sapcar.files1 = None
+                else:
+                    self._sapcar.files1 = new_files
+                    self._sapcar.files0 = None
+        self._sapcar.version = version_bytes
 
     def read(self):
         """Reads the SAP CAR archive file and populates the files list.
@@ -747,6 +868,17 @@ class SAPCARArchive(object):
         """
         self.fd.seek(0)
         self._sapcar = SAPCARArchiveFormat(self.fd.read())
+        # Post-process: ensure all file objects have blocks as a list
+        if hasattr(self._sapcar, 'files0') and self._sapcar.files0 is not None:
+            for fil in self._sapcar.files0:
+                # Defensive: ensure blocks is always a list
+                if hasattr(fil, 'blocks') and fil.blocks is None:
+                    fil.blocks = []
+        if hasattr(self._sapcar, 'files1') and self._sapcar.files1 is not None:
+            for fil in self._sapcar.files1:
+                # Defensive: ensure blocks is always a list
+                if hasattr(fil, 'blocks') and fil.blocks is None:
+                    fil.blocks = []
         if self._sapcar.magic_string not in [SAPCAR_HEADER_MAGIC_STRING_STANDARD, SAPCAR_HEADER_MAGIC_STRING_BACKUP]:
             raise Exception("Invalid or unsupported magic string in file")
         if self._sapcar.version not in sapcar_archive_file_versions:
@@ -758,10 +890,13 @@ class SAPCARArchive(object):
 
         :return: files format objects according to the version
         """
-        if self.version == SAPCAR_VERSION_200:
-            return self._sapcar.files0
+        # Compare as string for version
+        if str(self.version) == '2.00':
+            files0 = self._sapcar.files0
+            return files0 if files0 is not None else []
         else:
-            return self._sapcar.files1
+            files1 = self._sapcar.files1
+            return files1 if files1 is not None else []
 
     @_files.setter
     def _files(self, files):
@@ -804,6 +939,8 @@ class SAPCARArchive(object):
         :type archive_filename: string
         """
         fil = SAPCARArchiveFile.from_file(filename, self.version, archive_filename)
+        if self._files is None:
+            self._files = []
         self._files.append(fil._file_format)
 
     def open(self, filename):

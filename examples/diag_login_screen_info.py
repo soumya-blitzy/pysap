@@ -156,7 +156,7 @@ def show_text_info(item):
         # final rendering
         for k in dico_final.keys():
             if dico_final[k]:
-                print(("%s" % k).ljust(key_len) + "\t" + ("%s" % dico_final[k]).ljust(val_len))
+                print(("%s" % k).ljust(key_len) + "\t" + ("%s" % dico_final[k]).ljust(val_len)) 
 
 
 # Set the verbosity to 0
